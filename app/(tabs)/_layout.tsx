@@ -1,59 +1,91 @@
-import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
-
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
+import { Colors } from '@/constants/Colors';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { MaterialIcons } from '@expo/vector-icons';
+import { Tabs } from 'expo-router';
+import { StyleSheet } from 'react-native';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const colorScheme = useColorScheme() ?? 'dark';
+  const isDark = colorScheme === 'dark';
+  const colors = Colors[colorScheme];
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
+        tabBarActiveTintColor: '#007AFF',
+        tabBarInactiveTintColor: isDark ? '#999999' : '#8E8E93',
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+          borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+          borderTopWidth: 1,
+          borderTopRightRadius: 24,
+          borderTopLeftRadius: 24,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 85,
+          paddingTop: 8,
+          paddingBottom: 28,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 10,
+          elevation: 5,
+        },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '500',
+          marginTop: 4,
+        },
       }}>
+
+      {/* 1. Home / Tugas */}
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
+          title: 'Tugas',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name="check-circle-outline" size={26} color={color} />
           ),
         }}
       />
+
+      {/* 2. Calendar / Kalender */}
       <Tabs.Screen
-        name="two"
+        name="calendar"
         options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
+          title: 'Kalender',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name="calendar-today" size={24} color={color} />
+          ),
+        }}
+      />
+
+      {/* 3. Search / Cari */}
+      <Tabs.Screen
+        name="search"
+        options={{
+          title: 'Cari',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name="search" size={28} color={color} />
+          ),
+        }}
+      />
+
+      {/* 4. Settings / Pengaturan */}
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Pengaturan',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name="settings" size={26} color={color} />
+          ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({});
