@@ -10,6 +10,16 @@ export interface Task {
     priority: 'low' | 'medium' | 'high';
     googleCalendarEventId?: string;
     notificationId?: string;
+    sharedWith?: string[];
+    sharedWithViewers?: string[];
+    category?: string;
+    tag?: string;
+    tagColor?: string;
+    reminderOffset?: number;
+    syncToGoogle?: boolean;
+    ownerId?: string;
+    updatedBy?: string;
+    updatedByAvatar?: string;
     createdAt: Date;
     updatedAt: Date;
 }

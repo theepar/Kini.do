@@ -73,7 +73,7 @@ interface TaskContextType {
     addCategory: (category: Category) => void;
     deleteCategory: (id: string) => void;
     getCategoryById: (id: string) => Category | undefined;
-    getCategoryDisplay: (id?: string) => { name: string; color: string } | null;
+    getCategoryDisplay: (id?: string) => { name: string; color: string; isDefault?: boolean } | null;
     addContact: (contact: Contact) => void;
     deleteContact: (id: string) => void;
 }
@@ -289,9 +289,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         const newTasks = [...tasks, taskWithIds];
         setTasks(newTasks);
         saveTasks(newTasks);
-
+        // Sync to Supabase only when task has collaborators
         if (user && taskWithIds.sharedWith && taskWithIds.sharedWith.length > 0) {
-            taskService.createTask(taskWithIds, user.id).catch(console.error);
+            const taskToSync = {
+                ...taskWithIds,
+                ownerId: user.id
+            };
+            taskService.createTask(taskToSync, user.id)
+                .then(() => console.log('[TaskContext] Shared task synced to Supabase:', taskWithIds.id))
+                .catch(console.error);
         }
     };
 
@@ -350,8 +356,26 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
         if (user) {
             const updatedTask = newTasks.find(t => t.id === id);
-            if (updatedTask && updatedTask.sharedWith && updatedTask.sharedWith.length > 0) {
-                taskService.upsertTask(updatedTask, user.id).catch(console.error);
+            console.log('[TaskContext] Update check:', {
+                id,
+                hasTask: !!updatedTask,
+                sharedWith: updatedTask?.sharedWith,
+                sharedWithViewers: updatedTask?.sharedWithViewers
+            });
+
+            // Sync if task has any collaborators (editors OR viewers)
+            const hasCollaborators = (updatedTask?.sharedWith && updatedTask.sharedWith.length > 0) ||
+                (updatedTask?.sharedWithViewers && updatedTask.sharedWithViewers.length > 0);
+
+            if (updatedTask && hasCollaborators) {
+                // Only sync tasks with collaborators to Supabase
+                const taskToSync = {
+                    ...updatedTask,
+                    ownerId: updatedTask.ownerId || user.id
+                };
+                taskService.upsertTask(taskToSync, user.id)
+                    .then(() => console.log('[TaskContext] Shared task synced to Supabase:', id))
+                    .catch(err => console.error('[TaskContext] Failed to sync task:', err));
             }
         }
     };

@@ -6,8 +6,9 @@ export interface CalendarEvent {
     id: string;
     summary: string;
     description?: string;
-    start: { dateTime: string; timeZone: string };
-    end: { dateTime: string; timeZone: string };
+    start: { dateTime?: string; date?: string; timeZone?: string };
+    end: { dateTime?: string; date?: string; timeZone?: string };
+    attendees?: { email: string }[];
 }
 
 export const googleCalendar = {
@@ -32,6 +33,15 @@ export const googleCalendar = {
 
         const endTime = new Date(startTime.getTime() + 30 * 60 * 1000); // 30 min duration
 
+        // Map collaborators to attendees
+        const attendees: { email: string }[] = [];
+        if (task.sharedWith) {
+            task.sharedWith.forEach(email => attendees.push({ email }));
+        }
+        if (task.sharedWithViewers) {
+            task.sharedWithViewers.forEach(email => attendees.push({ email }));
+        }
+
         const event = {
             summary: task.title,
             description: task.description || `Task dari Kini.do - Prioritas: ${task.priority || 'normal'}`,
@@ -43,6 +53,7 @@ export const googleCalendar = {
                 dateTime: endTime.toISOString(),
                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             },
+            attendees: attendees.length > 0 ? attendees : undefined,
             reminders: {
                 useDefault: false,
                 overrides: [

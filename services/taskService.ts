@@ -27,6 +27,7 @@ const mapToLocalTask = (data: any): Task => ({
 // Map Local camelCase to DB snake_case
 const mapToDbTask = (task: Partial<Task>) => {
     const dbTask: any = {};
+    // Essential columns
     if (task.id !== undefined) dbTask.id = task.id;
     if (task.title !== undefined) dbTask.title = task.title;
     if (task.description !== undefined) dbTask.description = task.description;
@@ -36,11 +37,15 @@ const mapToDbTask = (task: Partial<Task>) => {
     if (task.flagged !== undefined) dbTask.is_flagged = task.flagged;
     if (task.date !== undefined) dbTask.date = task.date;
     if (task.time !== undefined) dbTask.time = task.time;
+    // Reminder & Calendar sync columns
     if (task.reminderOffset !== undefined) dbTask.reminder_offset = task.reminderOffset;
     if (task.googleCalendarEventId !== undefined) dbTask.google_calendar_event_id = task.googleCalendarEventId;
     if (task.syncToGoogle !== undefined) dbTask.sync_to_google = task.syncToGoogle;
+    // Update tracking columns
     if (task.updatedAt !== undefined) dbTask.updated_at = task.updatedAt;
     if (task.updatedBy !== undefined) dbTask.updated_by = task.updatedBy;
+    if (task.updatedByAvatar !== undefined) dbTask.updated_by_avatar = task.updatedByAvatar;
+    // Collaboration columns
     if (task.sharedWith !== undefined) dbTask.shared_with = task.sharedWith;
     if (task.sharedWithViewers !== undefined) dbTask.shared_with_viewers = task.sharedWithViewers;
 
@@ -108,13 +113,24 @@ export const taskService = {
         };
         Object.keys(dbTask).forEach(key => dbTask[key] === undefined && delete dbTask[key]);
 
+        console.log('[taskService] Upserting task:', {
+            id: dbTask.id,
+            shared_with: dbTask.shared_with,
+            shared_with_viewers: dbTask.shared_with_viewers
+        });
+
         const { data, error } = await supabase
             .from('tasks')
             .upsert(dbTask)
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error('[taskService] Upsert error:', error);
+            throw error;
+        }
+
+        console.log('[taskService] Upsert success:', { id: data?.id, shared_with: data?.shared_with });
         return mapToLocalTask(data);
     },
 

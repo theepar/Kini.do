@@ -17,6 +17,7 @@ import { ActionBar } from '@/components/ActionBar';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
+import { useCalendarSync } from '@/context/CalendarSyncContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTasks } from '@/context/TaskContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -174,9 +175,28 @@ export default function ShareScreen() {
         }
     };
 
-    const handleShare = () => {
+    const { syncTask } = useCalendarSync();
+
+    const handleShare = async () => {
         if (!task) return;
+
+        // Update local and Supabase
         updateTask(task.id, { sharedWith: editors, sharedWithViewers: viewers });
+
+        // Sync to Google Calendar if linked
+        if (task.syncToGoogle) {
+            try {
+                await syncTask(task.id, 'update', {
+                    ...task,
+                    sharedWith: editors,
+                    sharedWithViewers: viewers
+                });
+                console.log('Collaborators synced to Google Calendar');
+            } catch (error) {
+                console.error('Failed to sync collaborators to Google Calendar:', error);
+            }
+        }
+
         router.back();
     };
 

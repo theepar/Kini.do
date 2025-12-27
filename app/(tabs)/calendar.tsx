@@ -74,7 +74,7 @@ export default function CalendarScreen() {
 
     const weekDays = getWeekDays();
 
-    const selectedDateString = selectedDate.toISOString().split('T')[0];
+    const selectedDateString = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
     const activeTasks = tasks.filter(t => t.date === selectedDateString && !t.isCompleted);
 
     const monthNamesId = [
@@ -163,29 +163,31 @@ export default function CalendarScreen() {
                         {(viewMode === 'week' ? weekDays : days).map((day, i) => {
                             if (!day) return <View key={i} style={styles.dayCell} />;
 
-                            const dayStr = day.toISOString().split('T')[0];
+                            const dayStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
                             const isSelected = dayStr === selectedDateString;
                             const hasTasks = tasks.some(t => t.date === dayStr && !t.isCompleted);
 
                             return (
                                 <TouchableOpacity
                                     key={i}
-                                    style={[
-                                        styles.dayCell,
-                                        isSelected && styles.selectedDay,
-                                        isSelected && { backgroundColor: colors.tint }
-                                    ]}
+                                    style={styles.dayCell}
                                     onPress={() => setSelectedDate(day)}
                                 >
-                                    <Text style={[
-                                        styles.dayText,
-                                        { color: isSelected ? '#FFF' : colors.textSecondary }
+                                    <View style={[
+                                        styles.dayContent,
+                                        isSelected && styles.selectedDayContainer,
+                                        isSelected && { backgroundColor: colors.tint, borderRadius: 99 }
                                     ]}>
-                                        {day.getDate()}
-                                    </Text>
-                                    {!isSelected && hasTasks && (
-                                        <View style={[styles.dot, { backgroundColor: colors.tint }]} />
-                                    )}
+                                        <Text style={[
+                                            styles.dayText,
+                                            { color: isSelected ? '#FFF' : colors.textSecondary }
+                                        ]}>
+                                            {day.getDate()}
+                                        </Text>
+                                        {!isSelected && hasTasks && (
+                                            <View style={[styles.dot, { backgroundColor: colors.tint }]} />
+                                        )}
+                                    </View>
                                 </TouchableOpacity>
                             );
                         })}
@@ -396,6 +398,19 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         marginBottom: 8,
         borderRadius: 999,
+    },
+    dayContent: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    selectedDayContainer: {
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
     },
     dayText: {
         fontSize: 14,

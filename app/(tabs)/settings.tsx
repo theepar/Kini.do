@@ -2,7 +2,6 @@ import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { MaterialIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -23,13 +22,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useCalendarSync } from '@/context/CalendarSyncContext';
 import { Language, languageNames, supportedLanguages, useLanguage } from '@/context/LanguageContext';
 import { StartWeekDay, getStartWeekDayName, usePreferences } from '@/context/PreferencesContext';
-import { useTasks } from '@/context/TaskContext';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { language, setLanguage, t, languageName, isTranslating } = useLanguage();
-  const { resetTasks } = useTasks();
+
   const { signOut, user } = useAuth();
   const { autoSyncEnabled, setAutoSyncEnabled, lastSyncTime, isSyncing, syncNow } = useCalendarSync();
   const {
@@ -37,6 +36,7 @@ export default function SettingsScreen() {
     notificationsEnabled, setNotificationsEnabled,
     deadlineReminders, setDeadlineReminders,
     dailyDigest, setDailyDigest,
+    dailyDigestTime, setDailyDigestTime,
     themeMode, setThemeMode
   } = usePreferences();
   const router = useRouter();
@@ -47,6 +47,7 @@ export default function SettingsScreen() {
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showWeekStartModal, setShowWeekStartModal] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showDigestTimePicker, setShowDigestPicker] = useState(false);
 
 
   const formatLastSync = () => {
@@ -233,9 +234,17 @@ export default function SettingsScreen() {
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
               title: t('dailyDigest'),
+              subtitle: dailyDigest ? `Setiap pagi jam ${dailyDigestTime}` : undefined,
               isToggle: true,
               toggleValue: dailyDigest,
-              onToggle: setDailyDigest
+              onToggle: (enabled) => {
+                if (enabled) {
+                  setShowDigestPicker(true);
+                } else {
+                  setDailyDigest(false);
+                }
+              },
+              onPress: () => setShowDigestPicker(true)
             })}
           </View>
         </View>
@@ -292,49 +301,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
-          {renderSectionHeader(t('data'))}
-          <View style={[styles.menuGroup, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
-            {renderMenuItem({
-              icon: 'refresh',
-              iconColor: '#FFF',
-              iconBg: '#F59E0B',
-              title: t('resetTasks'),
-              subtitle: t('resetTasksSubtitle'),
-              hasArrow: true,
-              onPress: () => {
-                Alert.alert(
-                  t('resetConfirmTitle'),
-                  t('resetConfirmMessage'),
-                  [
-                    { text: t('cancel'), style: 'cancel' },
-                    {
-                      text: t('reset'),
-                      style: 'destructive',
-                      onPress: () => {
-                        resetTasks();
-                        Alert.alert(t('success'), t('resetSuccessMessage'));
-                      }
-                    },
-                  ]
-                );
-              },
-            })}
-            <View style={[styles.separator, { backgroundColor: colors.border }]} />
-            {renderMenuItem({
-              icon: 'celebration',
-              iconColor: '#FFF',
-              iconBg: '#8B5CF6',
-              title: 'Reset Welcome Screen',
-              subtitle: 'Tampilkan welcome screen lagi',
-              hasArrow: true,
-              onPress: async () => {
-                await AsyncStorage.removeItem('hasSeenWelcome');
-                Alert.alert('Berhasil', 'Welcome screen akan muncul saat restart app');
-              },
-            })}
-          </View>
-        </View>
+
 
         <View style={styles.footer}>
           <TouchableOpacity

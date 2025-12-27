@@ -115,56 +115,81 @@ export default function SearchScreen() {
 
                 {/* Search Results */}
                 {/* Only show if searching */}
-                {searchText.length > 0 || true ? (
-                    <View style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>
-                            {searchText.length > 0 ? t('searchResults') : t('upcoming')}
-                        </Text>
-                        <View style={styles.resultList}>
-                            {(() => {
-                                const today = new Date().toISOString().split('T')[0];
-                                const displayTasks = searchText.length > 0
-                                    ? filteredTasks
-                                    : tasks.filter(t => !t.isCompleted && (!t.date || t.date >= today)).sort((a, b) => (a.date || '') > (b.date || '') ? 1 : -1);
+                {/* Search Results */}
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>
+                        {searchText.length > 0 ? t('searchResults') : (activeFilter !== 'all' ? filterLabels[activeFilter] : t('upcoming'))}
+                    </Text>
+                    <View style={styles.resultList}>
+                        {(() => {
+                            const today = new Date().toISOString().split('T')[0];
 
-                                if (displayTasks.length === 0) {
-                                    return (
-                                        <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>
-                                            {searchText.length > 0 ? t('noResults') : "No upcoming tasks"}
-                                        </Text>
-                                    );
+                            const displayTasks = tasks.filter(task => {
+                                // 1. Filter by Search Text
+                                if (searchText) {
+                                    if (!task.title.toLowerCase().includes(searchText.toLowerCase())) {
+                                        return false;
+                                    }
                                 }
 
-                                return displayTasks.map(task => (
+                                // 2. Filter by Category
+                                switch (activeFilter) {
+                                    case 'today':
+                                        return task.date === today;
+                                    case 'overdue':
+                                        return task.date && task.date < today && !task.isCompleted;
+                                    case 'shared':
+                                        const hasShared = (task.sharedWith && task.sharedWith.length > 0) || (task.sharedWithViewers && task.sharedWithViewers.length > 0);
+                                        return hasShared;
+                                    case 'completed':
+                                        return task.isCompleted;
+                                    case 'all':
+                                    default:
+                                        // If no search text and 'all' filter, show upcoming tasks (default view)
+                                        if (!searchText) {
+                                            return !task.isCompleted && (!task.date || task.date >= today);
+                                        }
+                                        return true; // Match all if searching
+                                }
+                            }).sort((a, b) => (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99'));
+
+                            if (displayTasks.length === 0) {
+                                return (
+                                    <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>
+                                        {t('noResults')}
+                                    </Text>
+                                );
+                            }
+
+                            return displayTasks.map(task => (
+                                <TouchableOpacity
+                                    key={task.id}
+                                    style={[styles.resultCard, { backgroundColor: isDark ? colors.cardBackground : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9' }]}
+                                    onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
+                                >
                                     <TouchableOpacity
-                                        key={task.id}
-                                        style={[styles.resultCard, { backgroundColor: isDark ? colors.cardBackground : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9' }]}
-                                        onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
+                                        style={[styles.checkbox, { borderColor: isDark ? '#64748B' : '#CBD5E1', backgroundColor: task.isCompleted ? colors.tint : 'transparent', borderWidth: task.isCompleted ? 0 : 2, justifyContent: 'center', alignItems: 'center' }]}
+                                        onPress={() => toggleTask(task.id)}
                                     >
-                                        <TouchableOpacity
-                                            style={[styles.checkbox, { borderColor: isDark ? '#64748B' : '#CBD5E1', backgroundColor: task.isCompleted ? colors.tint : 'transparent', borderWidth: task.isCompleted ? 0 : 2, justifyContent: 'center', alignItems: 'center' }]}
-                                            onPress={() => toggleTask(task.id)}
-                                        >
-                                            {task.isCompleted && <MaterialIcons name="check" size={14} color="#FFF" />}
-                                        </TouchableOpacity>
-                                        <View style={styles.resultContent}>
-                                            <View style={styles.resultHeader}>
-                                                <Text style={[styles.resultTitle, { color: isDark ? '#FFF' : '#1E293B', textDecorationLine: task.isCompleted ? 'line-through' : 'none' }]}>{task.title}</Text>
-                                                {task.priority === 'high' && <View style={[styles.priorityDot, { backgroundColor: '#EF4444' }]} />}
-                                            </View>
-                                            <View style={styles.resultMeta}>
-                                                <View style={styles.metaItem}>
-                                                    <MaterialIcons name="schedule" size={14} color="#94a3b8" style={{ marginRight: 4 }} />
-                                                    <Text style={[styles.metaText, { color: '#94a3b8' }]}>{task.time || task.date || "No date"}</Text>
-                                                </View>
+                                        {task.isCompleted && <MaterialIcons name="check" size={14} color="#FFF" />}
+                                    </TouchableOpacity>
+                                    <View style={styles.resultContent}>
+                                        <View style={styles.resultHeader}>
+                                            <Text style={[styles.resultTitle, { color: isDark ? '#FFF' : '#1E293B', textDecorationLine: task.isCompleted ? 'line-through' : 'none' }]}>{task.title}</Text>
+                                            {task.priority === 'high' && <View style={[styles.priorityDot, { backgroundColor: '#EF4444' }]} />}
+                                        </View>
+                                        <View style={styles.resultMeta}>
+                                            <View style={styles.metaItem}>
+                                                <MaterialIcons name="schedule" size={14} color="#94a3b8" style={{ marginRight: 4 }} />
+                                                <Text style={[styles.metaText, { color: '#94a3b8' }]}>{task.time || task.date || "No date"}</Text>
                                             </View>
                                         </View>
-                                    </TouchableOpacity>
-                                ));
-                            })()}
-                        </View>
+                                    </View>
+                                </TouchableOpacity>
+                            ));
+                        })()}
                     </View>
-                ) : null}
+                </View>
                 <View style={{ height: 100 }} />
             </ScrollView>
         </ThemedView>

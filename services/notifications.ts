@@ -20,8 +20,8 @@ export const notifications = {
     async scheduleReminder(task: Task): Promise<string | null> {
         if (!task.reminderTime) return null;
 
-        const trigger = new Date(task.reminderTime);
-        if (trigger <= new Date()) return null;
+        const triggerDate = new Date(task.reminderTime);
+        if (triggerDate <= new Date()) return null;
 
         const id = await Notifications.scheduleNotificationAsync({
             content: {
@@ -29,7 +29,10 @@ export const notifications = {
                 body: task.title,
                 data: { taskId: task.id },
             },
-            trigger: trigger as any,
+            trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate,
+            },
         });
 
         return id;
@@ -44,17 +47,6 @@ export const notifications = {
     },
 
     async scheduleDailyDigest(hour: number, minute: number): Promise<string> {
-        // Cancel first to avoid duplicates (though identifier should handle it if supported)
-        // Since we don't know the previous ID easily here, we rely on identifier if possible 
-        // OR we just return new ID.
-        // Actually, on Android 'identifier' in scheduleNotificationAsync prevents duplicates?
-        // Documentation says "If you provide an identifier... it will replace the existing notification".
-        // But Android might restart.
-
-        // We'll trust the caller to manage IDs or use a fixed identifier if Expo supports it nicely.
-        // Expo supports `identifier` in the request content or schedule options? 
-        // `scheduleNotificationAsync` returns Promise<string> (id).
-
         const id = await Notifications.scheduleNotificationAsync({
             content: {
                 title: '☀️ Kini.do Morning',
@@ -62,10 +54,10 @@ export const notifications = {
                 data: { type: 'daily-digest' },
             },
             trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DAILY,
                 hour,
                 minute,
-                repeats: true,
-            } as any,
+            },
         });
         return id;
     },
@@ -84,5 +76,89 @@ export const notifications = {
             },
             trigger: null,
         });
+    },
+
+    async updateSmartDigest(tasks: any[], hour: number = 7, minute: number = 0): Promise<void> {
+        // 1. Cancel previous smart digests
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        for (const notif of scheduled) {
+            if (notif.content.data?.type === 'smart-digest') {
+                await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+            }
+        }
+
+        // 2. Determine Notify Time (Next occurrences)
+        const now = new Date();
+        const target = new Date();
+        target.setHours(hour, minute, 0, 0);
+
+        if (now > target) {
+            // If passed today, schedule for tomorrow
+            target.setDate(target.getDate() + 1);
+        }
+
+        // 3. Filter Tasks for that Target Date (Local Match)
+        const year = target.getFullYear();
+        const month = String(target.getMonth() + 1).padStart(2, '0');
+        const day = String(target.getDate()).padStart(2, '0');
+        const targetDateStr = `${year}-${month}-${day}`;
+
+        const tasksForDate = tasks.filter(t => !t.isCompleted && t.date === targetDateStr);
+
+        // 4. Compose Message
+        let body = '';
+        if (tasksForDate.length === 0) {
+            const msgs = [
+                "Selamat pagi! 🎉 Hari ini kosong melompong. Nikmati waktu bebasmu! ☕",
+                "Wah, hari ini free! Rencanakan liburan mini atau tidur lagi? 😴",
+                "Jadwal kosong! Saatnya me time sepenuhnya. 🧘‍♂️",
+                "Tidak ada tugas hari ini. Great job clearing your tasks! 🌟"
+            ];
+            body = msgs[Math.floor(Math.random() * msgs.length)];
+        } else {
+            const taskTitles = tasksForDate.slice(0, 3).map(t => t.title).join(', ');
+            const count = tasksForDate.length;
+            const remaining = count > 3 ? `dan ${count - 3} lainnya` : '';
+
+            if (count <= 3) {
+                const msgs = [
+                    `Selamat pagi! ☀️ Ada ${count} tugas: ${taskTitles}. Yuk selesaikan! 💪`,
+                    `Siap produktif? ${count} tugas menunggu: ${taskTitles}. Let's go! 🚀`,
+                    `Pagi! Fokus hari ini: ${taskTitles}. Semangat! 📝`
+                ];
+                body = msgs[Math.floor(Math.random() * msgs.length)];
+            } else {
+                const msgs = [
+                    `Bangun warrior! ⚔️ Ada ${count} tugas menanti: ${taskTitles} ${remaining}. Fokus dan hajar! 🔥`,
+                    `Wow, sibuk nih! ${count} tugas di depan mata. Prioritas: ${taskTitles}. Kamu pasti bisa! 💼`,
+                    `Challenge hari ini: ${count} tugas. Mulai dari ${taskTitles}... Gaspol! 🏎️`
+                ];
+                body = msgs[Math.floor(Math.random() * msgs.length)];
+            }
+        }
+
+        // 5. Schedule
+        await Notifications.scheduleNotificationAsync({
+            content: {
+                title: '☀️ Kini.do Morning',
+                body: body,
+                data: { type: 'smart-digest', date: targetDateStr },
+            },
+            trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: target,
+            },
+        });
+
+        console.log(`Smart digest scheduled for ${targetDateStr} at ${hour}:${minute}`);
+    },
+
+    async cancelSmartDigest(): Promise<void> {
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        for (const notif of scheduled) {
+            if (notif.content.data?.type === 'smart-digest') {
+                await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+            }
+        }
     },
 };

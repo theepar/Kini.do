@@ -29,9 +29,12 @@ export const userService = {
             .from('profiles')
             .select('*')
             .eq('email', email)
-            .single();
+            .maybeSingle();
 
-        if (error) return null;
+        if (error) {
+            console.error('Error fetching profile:', error);
+            return null;
+        }
         return data;
     },
 

@@ -18,9 +18,11 @@ interface AuthContextType {
     signUpWithEmail: (email: string, password: string, name: string) => Promise<{ error?: string; needsConfirmation?: boolean }>;
     signOut: () => Promise<void>;
     resetPassword: (email: string) => Promise<{ error?: string }>;
+    refreshGoogleToken: () => Promise<boolean>;
 }
 
 const GOOGLE_TOKEN_KEY = 'kini_google_token';
+const GOOGLE_REFRESH_TOKEN_KEY = 'kini_google_refresh_token';
 
 const AuthContext = createContext<AuthContextType>({
     user: null,
@@ -32,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({
     signUpWithEmail: async () => ({}),
     signOut: async () => { },
     resetPassword: async () => ({}),
+    refreshGoogleToken: async () => false,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -71,6 +74,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     redirectTo: 'kini://auth/callback',
                     skipBrowserRedirect: true,
                     scopes: 'https://www.googleapis.com/auth/calendar',
+                    queryParams: {
+                        access_type: 'offline',
+                        prompt: 'consent',
+                    },
                 },
             });
 
@@ -93,12 +100,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         const accessToken = params.get('access_token');
                         const refreshToken = params.get('refresh_token');
                         const providerToken = params.get('provider_token');
+                        const providerRefreshToken = params.get('provider_refresh_token');
 
                         // Store Google provider token for Calendar API
                         if (providerToken) {
                             console.log('Got Google provider token');
                             setGoogleAccessToken(providerToken);
                             AsyncStorage.setItem(GOOGLE_TOKEN_KEY, providerToken);
+                        }
+
+                        // Store Google refresh token for auto-refresh
+                        if (providerRefreshToken) {
+                            console.log('Got Google refresh token');
+                            AsyncStorage.setItem(GOOGLE_REFRESH_TOKEN_KEY, providerRefreshToken);
                         }
 
                         if (accessToken) {
@@ -189,6 +203,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    // Refresh Google access token using stored refresh token
+    const refreshGoogleToken = async (): Promise<boolean> => {
+        try {
+            const refreshToken = await AsyncStorage.getItem(GOOGLE_REFRESH_TOKEN_KEY);
+            if (!refreshToken) {
+                console.log('No Google refresh token available');
+                return false;
+            }
+
+            // Use Google's token endpoint to refresh the access token
+            const response = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    client_id: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '',
+                    grant_type: 'refresh_token',
+                    refresh_token: refreshToken,
+                }).toString(),
+            });
+
+            if (!response.ok) {
+                console.error('Failed to refresh Google token:', response.status);
+                return false;
+            }
+
+            const data = await response.json();
+            if (data.access_token) {
+                console.log('Google token refreshed successfully');
+                setGoogleAccessToken(data.access_token);
+                await AsyncStorage.setItem(GOOGLE_TOKEN_KEY, data.access_token);
+                return true;
+            }
+
+            return false;
+        } catch (error) {
+            console.error('Error refreshing Google token:', error);
+            return false;
+        }
+    };
+
     return (
         <AuthContext.Provider value={{
             user,
@@ -200,6 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             signUpWithEmail,
             signOut,
             resetPassword,
+            refreshGoogleToken,
         }}>
             {children}
         </AuthContext.Provider>

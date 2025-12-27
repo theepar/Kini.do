@@ -20,7 +20,7 @@ interface PreferencesContextType {
     setDailyDigestTime: (time: string) => Promise<void>;
 }
 
-const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
+export const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
 
 const PREFERENCES_KEY = '@app_preferences';
 

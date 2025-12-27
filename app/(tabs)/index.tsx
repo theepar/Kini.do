@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -18,7 +18,9 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { useAuth } from '@/context/AuthContext';
 import { useCalendarSync } from '@/context/CalendarSyncContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { usePreferences } from '@/context/PreferencesContext';
 import { useTasks } from '@/context/TaskContext';
+import { notifications } from '@/services/notifications';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -27,21 +29,95 @@ export default function MainScreen() {
   const colorScheme = useColorScheme() ?? 'dark';
   const isDark = colorScheme === 'dark';
   const colors = Colors[colorScheme];
-  const [activeTab, setActiveTab] = useState('today');
+  const [activeTab, setActiveTab] = useState('all');
+  const [sortBy, setSortBy] = useState<'default' | 'az' | 'za'>('default');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const { tasks, getCategoryDisplay } = useTasks();
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { autoSyncEnabled, lastSyncTime, isSyncing } = useCalendarSync();
+  const { lastSyncTime } = useCalendarSync();
+  const { dailyDigest, dailyDigestTime } = usePreferences();
 
   const formatLastSync = () => {
     if (!lastSyncTime) return '';
     return lastSyncTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
-  const highPriorityTasks = tasks.filter(t => t.priority === 'high' && !t.isCompleted);
-  const otherTasks = tasks.filter(t => t.priority !== 'high' && !t.isCompleted);
+  // Smart Daily Digest Manager
+  React.useEffect(() => {
+    if (dailyDigest) {
+      const [h, m] = (dailyDigestTime || '07:00').split(':').map(Number);
+      notifications.updateSmartDigest(tasks, h || 7, m || 0).catch(err => {
+        console.warn('Failed to update smart digest:', err);
+      });
+    } else {
+      notifications.cancelSmartDigest().catch(err => {
+        console.warn('Failed to cancel smart digest:', err);
+      });
+    }
+  }, [tasks, dailyDigest, dailyDigestTime]);
+
+  // Get today's date string for comparison
+  // Helper for local date string YYYY-MM-DD
+  const getLocalDateStr = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Get today's date string for comparison
+  const todayStr = getLocalDateStr(new Date());
+
+  // Calculate 1 week from now for limiting homepage display
+  const oneWeekFromNow = new Date();
+  oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
+  const oneWeekStr = getLocalDateStr(oneWeekFromNow);
+
+  // Filter tasks based on activeTab
+  // Homepage only shows tasks up to 1 week ahead, beyond that use Calendar
+  const getFilteredTasks = () => {
+    switch (activeTab) {
+      case 'all':
+        return tasks.filter(t => !t.isCompleted && (!t.date || t.date <= oneWeekStr));
+      case 'today':
+        return tasks.filter(t => !t.isCompleted && t.date === todayStr);
+      case 'upcoming':
+        return tasks.filter(t => !t.isCompleted && t.date && t.date > todayStr && t.date <= oneWeekStr);
+      case 'completed':
+        return tasks.filter(t => t.isCompleted);
+      default:
+        return tasks.filter(t => !t.isCompleted && (!t.date || t.date <= oneWeekStr));
+    }
+  };
+
+  const filteredTasks = getFilteredTasks();
+
+  // Sort tasks logic
+  const sortTasks = (tasksToSort: typeof tasks) => {
+    if (sortBy === 'default') return tasksToSort;
+
+    return [...tasksToSort].sort((a, b) => {
+      const titleA = a.title.toLowerCase();
+      const titleB = b.title.toLowerCase();
+
+      if (sortBy === 'az') {
+        return titleA.localeCompare(titleB);
+      } else {
+        return titleB.localeCompare(titleA);
+      }
+    });
+  };
+
+  const sortedTasks = sortTasks(filteredTasks);
+  const highPriorityTasks = sortedTasks.filter(t => t.priority === 'high');
+  const otherTasks = sortedTasks.filter(t => t.priority !== 'high');
+
+  // Count for today tab badge
+  const todayTaskCount = tasks.filter(t => !t.isCompleted && t.date === todayStr).length;
 
   const tabs = [
+    { key: 'all', label: t('all') },
     { key: 'today', label: t('today') },
     { key: 'upcoming', label: t('upcoming') },
     { key: 'completed', label: t('completedFilter') },
@@ -75,10 +151,12 @@ export default function MainScreen() {
     if (!category) return null;
 
     const bg = hexToRgba(category.color, isDark ? 0.2 : 0.15);
+    // Translate category name if it's a default category key
+    const displayName = category.isDefault ? t(category.name as any) : category.name;
 
     return (
       <View style={[styles.tag, { backgroundColor: bg }]}>
-        <Text style={[styles.tagText, { color: category.color }]}>{category.name}</Text>
+        <Text style={[styles.tagText, { color: category.color }]}>{displayName}</Text>
       </View>
     );
   };
@@ -98,7 +176,6 @@ export default function MainScreen() {
             <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>{t('taskList')}</Text>
             <View style={styles.titleRow}>
               <Text style={[styles.headerTitle, { color: colors.text }]}>Kini.do</Text>
-              <View style={styles.dot} />
             </View>
           </View>
           <TouchableOpacity
@@ -113,15 +190,21 @@ export default function MainScreen() {
         </View>
 
         {/* Sync Status Bar */}
-        <View style={styles.syncContainer}>
-          <View
-            style={[styles.syncBadge, { backgroundColor: hexToRgba(Colors.light.success, isDark ? 0.1 : 0.05) }]}
-          >
-            <MaterialIcons name="sync" size={12} color={isDark ? Colors.dark.success : Colors.light.success} />
-            <Text style={[styles.syncText, { color: isDark ? Colors.dark.success : Colors.light.success }]}>
-              Google Sync Aktif • {formatLastSync()}
+        <View style={styles.syncStatusRow}>
+          <View style={[styles.syncBadge, {
+            backgroundColor: isDark ? 'rgba(34, 197, 94, 0.1)' : '#F0FDF4',
+            borderColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#BBF7D0'
+          }]}>
+            <MaterialIcons name="check-circle" size={14} color={isDark ? '#4ADE80' : '#22C55E'} />
+            <Text style={[styles.syncText, { color: isDark ? '#4ADE80' : '#22C55E' }]}>
+              Google Sync Aktif
             </Text>
           </View>
+          {lastSyncTime && (
+            <Text style={[styles.lastUpdated, { color: colors.textSecondary }]}>
+              Terakhir: {formatLastSync()}
+            </Text>
+          )}
         </View>
 
         {/* Custom Tabs */}
@@ -129,11 +212,8 @@ export default function MainScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
             {tabs.map(tab => {
               const isActive = activeTab === tab.key;
-              // Use Colors constants for consistent theming
-              const activeBg = colors.tabActive;
-              const inactiveBg = colors.cardBackground;
-              const activeTextColor = isDark ? colors.background : colors.cardBackground;
-              const inactiveTextColor = colors.textSecondary;
+              // Count for badge - only show for 'today' tab
+              const count = tab.key === 'today' ? todayTaskCount : 0;
 
               return (
                 <TouchableOpacity
@@ -142,25 +222,30 @@ export default function MainScreen() {
                   style={[
                     styles.tab,
                     {
-                      backgroundColor: isActive ? activeBg : inactiveBg,
+                      backgroundColor: isActive ? colors.text : colors.cardBackground,
                       borderColor: colors.border,
-                      borderWidth: (isActive && !isDark) ? 0 : 1,
+                      borderWidth: isActive ? 0 : 1,
                     },
                     isActive && {
-                      shadowColor: colors.text,
+                      shadowColor: '#000',
                       shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.1,
+                      shadowOpacity: 0.15,
                       shadowRadius: 8,
-                      elevation: 2
+                      elevation: 4
                     }
                   ]}
                 >
                   <Text style={[
                     styles.tabText,
-                    { color: isActive ? activeTextColor : inactiveTextColor }
+                    { color: isActive ? colors.background : colors.textSecondary }
                   ]}>
                     {tab.label}
                   </Text>
+                  {isActive && count > 0 && (
+                    <View style={[styles.tabBadge, { backgroundColor: colors.background }]}>
+                      <Text style={[styles.tabBadgeText, { color: colors.text }]}>{count}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -173,11 +258,56 @@ export default function MainScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* High Priority Section */}
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, { zIndex: 10 }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('highPriority')}</Text>
-          <TouchableOpacity style={[styles.moreBtn, { backgroundColor: colors.cardBackground }]}>
-            <MaterialIcons name="more-horiz" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
+          <View>
+            <TouchableOpacity
+              style={[styles.moreBtn, { backgroundColor: colors.cardBackground }]}
+              onPress={() => setShowSortMenu(!showSortMenu)}
+            >
+              <MaterialIcons name="more-horiz" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            {/* Dropdown Menu */}
+            {showSortMenu && (
+              <View style={[
+                styles.dropdownMenu,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.border,
+                  shadowColor: isDark ? "#000" : "#888"
+                }
+              ]}>
+                {[
+                  { id: 'default', label: 'Default' },
+                  { id: 'az', label: 'A - Z' },
+                  { id: 'za', label: 'Z - A' },
+                ].map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.dropdownItem,
+                      sortBy === option.id && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
+                    ]}
+                    onPress={() => {
+                      setSortBy(option.id as any);
+                      setShowSortMenu(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.dropdownText,
+                      { color: sortBy === option.id ? colors.text : colors.textSecondary }
+                    ]}>
+                      {option.label}
+                    </Text>
+                    {sortBy === option.id && (
+                      <MaterialIcons name="check" size={16} color={colors.text} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
         </View>
 
         <View style={styles.cardList}>
@@ -249,21 +379,25 @@ export default function MainScreen() {
                     </Text>
                   </View>
 
-                  {task.avatars && (
+                  {/* Collaborator Avatars */}
+                  {((task.sharedWith && task.sharedWith.length > 0) || (task.sharedWithViewers && task.sharedWithViewers.length > 0)) && (
                     <View style={styles.avatars}>
-                      {task.avatars.map((url, i) => (
-                        <Image
-                          key={i}
-                          source={{ uri: url }}
-                          style={[
-                            styles.avatar,
-                            {
-                              marginLeft: i > 0 ? -8 : 0,
-                              borderColor: colors.cardBackground,
-                            },
-                          ]}
-                        />
-                      ))}
+                      {[...(task.sharedWith || []), ...(task.sharedWithViewers || [])]
+                        .filter((item, index, self) => self.indexOf(item) === index)
+                        .slice(0, 3)
+                        .map((email, i) => (
+                          <Image
+                            key={i}
+                            source={{ uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(email)}&background=random&color=fff&size=56` }}
+                            style={[
+                              styles.avatar,
+                              {
+                                marginLeft: i > 0 ? -8 : 0,
+                                borderColor: colors.cardBackground,
+                              },
+                            ]}
+                          />
+                        ))}
                     </View>
                   )}
                 </View>
@@ -378,22 +512,25 @@ export default function MainScreen() {
                   )}
                 </View>
                 {/* Avatars for Other Tasks */}
-                {((task.sharedWith && task.sharedWith.length > 0)) && (
+                {((task.sharedWith && task.sharedWith.length > 0) || (task.sharedWithViewers && task.sharedWithViewers.length > 0)) && (
                   <View style={{ flexDirection: 'row', marginTop: 8 }}>
-                    {(task.sharedWith).slice(0, 3).map((email, i) => (
-                      <Image
-                        key={i}
-                        source={{ uri: `https://ui-avatars.com/api/?name=${email}&background=random&color=fff` }}
-                        style={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: 10,
-                          marginLeft: i > 0 ? -6 : 0,
-                          borderWidth: 1.5,
-                          borderColor: colors.cardBackground,
-                        }}
-                      />
-                    ))}
+                    {[...(task.sharedWith || []), ...(task.sharedWithViewers || [])]
+                      .filter((item, index, self) => self.indexOf(item) === index)
+                      .slice(0, 5)
+                      .map((email, i) => (
+                        <Image
+                          key={i}
+                          source={{ uri: `https://ui-avatars.com/api/?name=${email}&background=random&color=fff` }}
+                          style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 10,
+                            marginLeft: i > 0 ? -6 : 0,
+                            borderWidth: 1.5,
+                            borderColor: colors.cardBackground,
+                          }}
+                        />
+                      ))}
                   </View>
                 )}
               </View>
@@ -449,13 +586,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     fontFamily: 'Inter',
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#34d399',
-    marginTop: 18,
-  },
   profileBtn: {
     width: 44,
     height: 44,
@@ -468,7 +598,10 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  syncContainer: {
+  syncStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 24,
     marginBottom: 16,
   },
@@ -520,16 +653,6 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 20,
   },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 14,
-    height: 14,
-    backgroundColor: '#22C55E',
-    borderRadius: 7,
-    borderWidth: 2,
-  },
   headerMetadata: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -560,20 +683,16 @@ const styles = StyleSheet.create({
     paddingLeft: 24,
   },
   tabsContainer: {
-    paddingRight: 24,
-    gap: 12,
+    paddingHorizontal: 24,
+    marginBottom: 8,
   },
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 999,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    gap: 6,
   },
   tabText: {
     fontSize: 14,
@@ -756,5 +875,32 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 8,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 40,
+    right: 0,
+    width: 150,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 100,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  dropdownText: {
+    fontSize: 14,
+    fontWeight: '500',
+    fontFamily: 'Inter',
   },
 });

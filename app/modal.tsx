@@ -1,12 +1,12 @@
+import CustomDateTimePicker from '@/components/CustomDateTimePicker';
 import { MaterialIcons } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { uuid } from 'expo-modules-core';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
   Modal,
-  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -17,10 +17,10 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { v4 as uuidv4 } from 'uuid';
 
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
+import { useCalendarSync } from '@/context/CalendarSyncContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { Category, useTasks } from '@/context/TaskContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -45,6 +45,7 @@ export default function ModalScreen() {
   const isDark = colorScheme === 'dark';
   const colors = Colors[colorScheme];
   const { t } = useLanguage();
+  const { syncTask } = useCalendarSync();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -54,7 +55,7 @@ export default function ModalScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string>('personal');
   const [reminderOffset, setReminderOffset] = useState<number | null>(null);
   const [syncToGoogle, setSyncToGoogle] = useState(true);
-  
+
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -69,15 +70,17 @@ export default function ModalScreen() {
   const existingTask = isEditMode ? tasks.find(task => task.id === id) : null;
   const selectedCat = categories.find(c => c.id === selectedCategory);
 
+  const initialized = React.useRef(false);
+
   useEffect(() => {
-    if (isEditMode && existingTask) {
+    if (isEditMode && existingTask && !initialized.current) {
       setTitle(existingTask.title || '');
       setDescription(existingTask.description || '');
       setPriority(existingTask.priority || 'medium');
       setSelectedCategory(existingTask.category || 'personal');
       setSyncToGoogle(existingTask.syncToGoogle !== false);
       setReminderOffset(existingTask.reminderOffset ?? null);
-      
+
       if (existingTask.date) {
         const taskDate = new Date(existingTask.date);
         if (existingTask.time) {
@@ -87,22 +90,11 @@ export default function ModalScreen() {
         }
         setDate(taskDate);
       }
+      initialized.current = true;
     }
   }, [isEditMode, existingTask]);
 
-  const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) setDate(selectedDate);
-  };
 
-  const onTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
-    setShowTimePicker(Platform.OS === 'ios');
-    if (selectedTime) {
-      const newDate = new Date(date);
-      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
-      setDate(newDate);
-    }
-  };
 
   const formatDate = (d: Date) => {
     const today = new Date();
@@ -115,7 +107,7 @@ export default function ModalScreen() {
   };
 
   const formatTime = (d: Date) => {
-    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
   const getCategoryDisplayName = (cat: Category) => {
@@ -130,10 +122,17 @@ export default function ModalScreen() {
     return `${reminderOffset} minutes before`;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) return;
 
+    // Use local date formatting to prevent timezone shifts
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
     const timeString = timeEnabled ? formatTime(date) : undefined;
+    const taskId = isEditMode && existingTask ? existingTask.id : uuid.v4();
     const taskData = {
       title,
       description,
@@ -141,7 +140,7 @@ export default function ModalScreen() {
       category: selectedCategory,
       tag: selectedCat?.isDefault ? t(selectedCat.name as any) : selectedCat?.name,
       tagColor: selectedCat?.color,
-      date: date.toISOString().split('T')[0],
+      date: dateStr,
       time: timeString,
       syncToGoogle,
       reminderOffset,
@@ -151,11 +150,26 @@ export default function ModalScreen() {
       updateTask(existingTask.id, taskData);
     } else {
       addTask({
-        id: uuidv4(),
+        id: taskId,
         ...taskData,
         isCompleted: false,
       });
     }
+
+    // Push to Google Calendar if syncToGoogle is enabled
+    if (syncToGoogle) {
+      try {
+        const action = isEditMode && existingTask?.googleCalendarEventId ? 'update' : 'create';
+        await syncTask(taskId, action, {
+          ...taskData,
+          googleCalendarEventId: existingTask?.googleCalendarEventId,
+        });
+        console.log('Task synced to Google Calendar');
+      } catch (error) {
+        console.error('Failed to sync to Google Calendar:', error);
+      }
+    }
+
     router.back();
   };
 
@@ -188,7 +202,7 @@ export default function ModalScreen() {
       color: newCategoryColor,
       isDefault: false,
     });
-    
+
     setSelectedCategory(`custom_${Date.now()}`);
     setNewCategoryName('');
     setNewCategoryColor('#3B82F6');
@@ -241,7 +255,10 @@ export default function ModalScreen() {
         <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: colors.border }]}
-            onPress={() => setShowDatePicker(true)}
+            onPress={() => {
+              console.log('Date picker button pressed, current date:', date);
+              setShowDatePicker(true);
+            }}
           >
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: '#EF4444' }]}>
@@ -375,28 +392,28 @@ export default function ModalScreen() {
         <Text style={styles.footerText}>Kini.do — {t('lastEdited')} {formatDate(date)}</Text>
       </ScrollView>
 
-      {showDatePicker && (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          themeVariant={isDark ? 'dark' : 'light'}
-          onChange={onDateChange}
-          minimumDate={new Date()}
-        />
-      )}
+      {/* Date Picker */}
+      <CustomDateTimePicker
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onChange={(val) => setDate(val)}
+        value={date instanceof Date && !isNaN(date.getTime()) ? date : new Date()}
+        mode="date"
+      />
 
       {/* Time Picker */}
-      {showTimePicker && (
-        <DateTimePicker
-          value={date}
-          mode="time"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          themeVariant={isDark ? 'dark' : 'light'}
-          onChange={onTimeChange}
-          is24Hour={true}
-        />
-      )}
+      <CustomDateTimePicker
+        visible={showTimePicker}
+        onClose={() => setShowTimePicker(false)}
+        onChange={(val) => {
+          const newDate = new Date(date);
+          newDate.setHours(val.getHours());
+          newDate.setMinutes(val.getMinutes());
+          setDate(newDate);
+        }}
+        value={date instanceof Date && !isNaN(date.getTime()) ? date : new Date()}
+        mode="time"
+      />
 
       <Modal
         visible={showCategoryModal}
@@ -863,6 +880,30 @@ const styles = StyleSheet.create({
   addBtnText: {
     color: '#FFF',
     fontSize: 16,
+    fontWeight: '600',
+    fontFamily: 'Inter',
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerModalContent: {
+    width: '85%',
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  pickerModalTitle: {
+    fontSize: 18,
     fontWeight: '600',
     fontFamily: 'Inter',
   },
