@@ -323,6 +323,7 @@ const styles = StyleSheet.create({
         color: 'rgba(255, 255, 255, 0.5)',
         fontWeight: '600',
         letterSpacing: 1,
+        fontFamily: 'Inter',
     },
     cardLines: {
         flex: 1,
@@ -385,6 +386,7 @@ const styles = StyleSheet.create({
         lineHeight: 40,
         letterSpacing: -0.5,
         marginBottom: 12,
+        fontFamily: 'Inter',
     },
     heroHighlight: {
         color: '#007AFF',
@@ -395,6 +397,7 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 24,
         maxWidth: 300,
+        fontFamily: 'Inter',
     },
     carouselContainer: {
         marginBottom: 16,
@@ -437,11 +440,13 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#FFFFFF',
         marginBottom: 4,
+        fontFamily: 'Inter',
     },
     featureDesc: {
         fontSize: 13,
         color: 'rgba(255, 255, 255, 0.5)',
         lineHeight: 18,
+        fontFamily: 'Inter',
     },
     indicators: {
         flexDirection: 'row',
@@ -488,6 +493,7 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#FFFFFF',
         letterSpacing: 0.5,
+        fontFamily: 'Inter',
     },
     loginRow: {
         flexDirection: 'row',
@@ -498,10 +504,12 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: 'rgba(255, 255, 255, 0.5)',
         fontWeight: '500',
+        fontFamily: 'Inter',
     },
     loginLink: {
         fontSize: 13,
         color: '#007AFF',
         fontWeight: '600',
+        fontFamily: 'Inter',
     },
 });

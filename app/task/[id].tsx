@@ -14,24 +14,27 @@ import {
 
 import { ActionBar } from '@/components/ActionBar';
 import { ThemedView } from '@/components/ThemedView';
+import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useLanguage } from '@/context/LanguageContext';
 import { useTasks } from '@/context/TaskContext';
+import { Profile, userService } from '@/services/userService';
 
 export default function TaskDetailScreen() {
     const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams();
     const colorScheme = useColorScheme() ?? 'dark';
     const isDark = colorScheme === 'dark';
+    const colors = Colors[colorScheme];
     const { tasks, toggleTask, getCategoryById, deleteTask } = useTasks();
     const { t } = useLanguage();
     const [showMenu, setShowMenu] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [collaborators, setCollaborators] = useState<Profile[]>([]);
 
-    // Get category display helper
     const getCategoryDisplay = (categoryId?: string) => {
         if (!categoryId) return null;
         const category = getCategoryById(categoryId);
@@ -40,56 +43,68 @@ export default function TaskDetailScreen() {
         return { name: displayName, color: category.color };
     };
 
-    // Find Task
     const task = tasks.find(t => t.id === id);
+
+    React.useEffect(() => {
+        const loadCollaborators = async () => {
+            if (!task) return;
+            const emails = [...(task.sharedWith || []), ...(task.sharedWithViewers || [])];
+            const uniqueEmails = Array.from(new Set(emails));
+
+            if (uniqueEmails.length > 0) {
+                const profiles = await userService.getProfilesByEmails(uniqueEmails);
+                setCollaborators(profiles);
+            } else {
+                setCollaborators([]);
+            }
+        };
+        loadCollaborators();
+    }, [task?.sharedWith, task?.sharedWithViewers]);
 
     if (!task) {
         return (
-            <ThemedView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]} darkColor="#000000">
-                <Text style={{ color: isDark ? '#FFF' : '#000' }}>{t('taskNotFound')}</Text>
+            <ThemedView style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }]}>
+                <Text style={{ color: colors.text }}>{t('taskNotFound')}</Text>
                 <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
-                    <Text style={{ color: '#007AFF' }}>{t('back')}</Text>
+                    <Text style={{ color: colors.primary }}>{t('back')}</Text>
                 </TouchableOpacity>
             </ThemedView>
         );
     }
 
     return (
-        <ThemedView style={styles.container} darkColor="#000000">
+        <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-            {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)' }]}>
+            <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: colors.border, backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)' }]}>
                 <TouchableOpacity
                     style={styles.headerBtn}
                     onPress={() => router.back()}
                 >
-                    <MaterialIcons name="close" size={24} color="#007AFF" />
+                    <MaterialIcons name="close" size={24} color={colors.primary} />
                 </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('taskDetail')}</Text>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>{t('taskDetail')}</Text>
                 <TouchableOpacity style={styles.headerBtn} onPress={() => setShowMenu(true)}>
-                    <MaterialIcons name="more-horiz" size={24} color="#007AFF" />
+                    <MaterialIcons name="more-horiz" size={24} color={colors.primary} />
                 </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
-                {/* Title Card */}
-                <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <View style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                     <View style={styles.titleRow}>
                         <TouchableOpacity
-                            style={[styles.checkbox, { borderColor: isDark ? '#4B5563' : '#D1D5DB', backgroundColor: task.isCompleted ? '#007AFF' : 'transparent', borderWidth: task.isCompleted ? 0 : 2.5, alignItems: 'center', justifyContent: 'center' }]}
+                            style={[styles.checkbox, { borderColor: colors.textSecondary, backgroundColor: task.isCompleted ? colors.primary : 'transparent', borderWidth: task.isCompleted ? 0 : 2.5, alignItems: 'center', justifyContent: 'center' }]}
                             onPress={() => toggleTask(task.id)}
                         >
                             {task.isCompleted && <MaterialIcons name="check" size={16} color="#FFF" />}
                         </TouchableOpacity>
                         <View style={styles.titleContent}>
-                            <Text style={[styles.taskTitle, { color: isDark ? '#FFF' : '#111827', textDecorationLine: task.isCompleted ? 'line-through' : 'none' }]}>
+                            <Text style={[styles.taskTitle, { color: colors.text, textDecorationLine: task.isCompleted ? 'line-through' : 'none' }]}>
                                 {task.title}
                             </Text>
                             {(task.category || task.tag) && (() => {
                                 const category = task.category ? getCategoryDisplay(task.category) : null;
                                 if (category) {
-                                    // Convert hex to rgba for background
                                     const hexToRgba = (hex: string, alpha: number) => {
                                         const r = parseInt(hex.slice(1, 3), 16);
                                         const g = parseInt(hex.slice(3, 5), 16);
@@ -118,92 +133,125 @@ export default function TaskDetailScreen() {
                 </View>
 
                 {/* Metadata List */}
-                <View style={[styles.menuGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <View style={[styles.menuGroup, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                     {/* Due Date */}
-                    <View style={[styles.menuItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
+                    <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
                         <View style={styles.menuLeft}>
                             <View style={[styles.iconBox, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2' }]}>
-                                <MaterialIcons name="calendar-today" size={20} color={isDark ? '#F87171' : '#DC2626'} />
+                                <MaterialIcons name="calendar-today" size={20} color={colors.danger} />
                             </View>
-                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>{t('dueDate')}</Text>
+                            <Text style={[styles.menuLabel, { color: colors.text }]}>{t('dueDate')}</Text>
                         </View>
                         <View style={styles.menuRight}>
-                            <Text style={[styles.menuValue, { color: isDark ? '#F87171' : '#EF4444' }]}>{task.date || t('today')}, {task.time || '17:00'}</Text>
-                            <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
+                            <Text style={[styles.menuValue, { color: colors.danger }]}>{task.date || t('today')}, {task.time || '17:00'}</Text>
                         </View>
                     </View>
 
                     {/* Reminder */}
-                    <View style={[styles.menuItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
+                    <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
                         <View style={styles.menuLeft}>
                             <View style={[styles.iconBox, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE' }]}>
-                                <MaterialIcons name="notifications" size={20} color={isDark ? '#60A5FA' : '#2563EB'} />
+                                <MaterialIcons name="notifications" size={20} color={colors.primary} />
                             </View>
-                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>{t('reminder')}</Text>
+                            <Text style={[styles.menuLabel, { color: colors.text }]}>{t('reminder')}</Text>
                         </View>
                         <View style={styles.menuRight}>
-                            <Text style={[styles.menuValue, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>1 {t('hourBefore')}</Text>
-                            <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
+                            <Text style={[styles.menuValue, { color: colors.textSecondary }]}>1 {t('hourBefore')}</Text>
                         </View>
                     </View>
 
                     {/* Priority */}
-                    <View style={[styles.menuItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
+                    <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
                         <View style={styles.menuLeft}>
                             <View style={[styles.iconBox, { backgroundColor: isDark ? 'rgba(249, 115, 22, 0.2)' : '#FFEDD5' }]}>
-                                <MaterialIcons name="flag" size={20} color={isDark ? '#FB923C' : '#EA580C'} />
+                                <MaterialIcons name="flag" size={20} color={colors.warning} />
                             </View>
-                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>{t('priority')}</Text>
+                            <Text style={[styles.menuLabel, { color: colors.text }]}>{t('priority')}</Text>
                         </View>
                         <View style={styles.menuRight}>
                             <View style={[styles.priorityBadge, { backgroundColor: isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFEDD5' }]}>
-                                <Text style={[styles.priorityText, { color: isDark ? '#FDBA74' : '#C2410C' }]}>{task.priority === 'high' ? t('high') : task.priority === 'medium' ? t('medium') : t('low')}</Text>
+                                <Text style={[styles.priorityText, { color: colors.warning }]}>{task.priority === 'high' ? t('high') : task.priority === 'medium' ? t('medium') : t('low')}</Text>
                             </View>
-                            <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
                         </View>
                     </View>
                 </View>
 
                 {/* Description */}
-                <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <View style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                     <View style={styles.sectionHeader}>
-                        <MaterialIcons name="description" size={20} color="#9CA3AF" />
-                        <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#111827' }]}>{t('description')}</Text>
+                        <MaterialIcons name="description" size={20} color={colors.textSecondary} />
+                        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('description')}</Text>
                     </View>
                     <View style={styles.descContent}>
-                        <Text style={[styles.descText, { color: isDark ? '#D1D5DB' : '#4B5563' }]}>
+                        <Text style={[styles.descText, { color: colors.textSecondary }]}>
                             {task.description || t('noDescription')}
                         </Text>
                     </View>
                 </View>
 
                 {/* Shared With - Mock for now unless task has avatars */}
-                {task.avatars && (
-                    <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                {/* Shared With */}
+                {collaborators.length > 0 && (
+                    <View style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                         <View style={[styles.sectionHeader, { justifyContent: 'space-between', marginBottom: 16 }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <MaterialIcons name="group" size={20} color="#9CA3AF" />
-                                <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#111827' }]}>{t('sharedWith')}</Text>
+                                <MaterialIcons name="group" size={20} color={colors.textSecondary} />
+                                <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('sharedWith')}</Text>
                             </View>
-                            <TouchableOpacity style={[styles.manageBtn, { backgroundColor: 'rgba(0, 122, 255, 0.1)' }]}>
+                            <TouchableOpacity
+                                style={[styles.manageBtn, { backgroundColor: 'rgba(0, 122, 255, 0.1)' }]}
+                                onPress={() => router.push({ pathname: '/task/share', params: { id: task.id } })}
+                            >
                                 <Text style={styles.manageText}>{t('manage')}</Text>
                             </TouchableOpacity>
                         </View>
 
                         <View style={styles.avatarsRow}>
                             <View style={styles.avatarGroup}>
-                                {task.avatars.map((uri, i) => (
-                                    <Image
-                                        key={i}
-                                        source={{ uri }}
-                                        style={[styles.avatar, { marginLeft: i > 0 ? -12 : 0, borderColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}
-                                    />
+                                {collaborators.map((profile, i) => (
+                                    <View key={profile.id || i} style={[styles.avatar, { marginLeft: i > 0 ? -12 : 0, borderColor: colors.cardBackground, backgroundColor: colors.skeleton, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }]}>
+                                        {profile.avatar_url ? (
+                                            <Image source={{ uri: profile.avatar_url }} style={{ width: '100%', height: '100%' }} />
+                                        ) : (
+                                            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>
+                                                {(profile.full_name || profile.email).substring(0, 2).toUpperCase()}
+                                            </Text>
+                                        )}
+                                    </View>
                                 ))}
                             </View>
-                            <TouchableOpacity style={[styles.addAvatarBtn, { backgroundColor: isDark ? '#374151' : '#F3F4F6', borderColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
-                                <MaterialIcons name="add" size={20} color="#007AFF" />
+                            <TouchableOpacity
+                                style={[styles.addAvatarBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.cardBackground }]}
+                                onPress={() => router.push({ pathname: '/task/share', params: { id: task.id } })}
+                            >
+                                <MaterialIcons name="add" size={20} color={colors.primary} />
                             </TouchableOpacity>
                         </View>
+
+                        <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                            {collaborators.map(p => (
+                                <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceSecondary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, gap: 4 }}>
+                                    <Text style={{ fontSize: 12, color: colors.text }}>{p.full_name || p.email}</Text>
+                                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>
+                                        {task.sharedWith?.includes(p.email) ? '(Edit)' : '(View)'}
+                                    </Text>
+                                </View>
+                            ))}
+                        </View>
+                    </View>
+                )}
+
+                {/* Last Edited Info */}
+                {task.updatedAt && (
+                    <View style={{ alignItems: 'center', marginTop: 8, opacity: 0.7, paddingBottom: 16 }}>
+                        <Text style={{ fontSize: 13, color: isDark ? '#9CA3AF' : '#6B7280' }}>
+                            Diedit: {new Date(task.updatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                        {task.updatedBy && (
+                            <Text style={{ fontSize: 13, color: isDark ? '#9CA3AF' : '#6B7280', marginTop: 2 }}>
+                                Oleh: {task.updatedBy}
+                            </Text>
+                        )}
                     </View>
                 )}
 

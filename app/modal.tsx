@@ -17,49 +17,67 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { v4 as uuidv4 } from 'uuid';
 
 import { ThemedView } from '@/components/ThemedView';
-import { useColorScheme } from '@/hooks/useColorScheme';
-
+import { Colors } from '@/constants/Colors';
 import { useLanguage } from '@/context/LanguageContext';
 import { Category, useTasks } from '@/context/TaskContext';
+import { useColorScheme } from '@/hooks/useColorScheme';
+
+const COLOR_OPTIONS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#10B981', '#EC4899', '#14B8A6', '#6366F1', '#EF4444', '#6B7280'];
+
+const REMINDER_OPTIONS = [
+  { label: 'none', value: null },
+  { label: 'At time of event', value: 0 },
+  { label: '5 minutes before', value: 5 },
+  { label: '10 minutes before', value: 10 },
+  { label: '15 minutes before', value: 15 },
+  { label: '30 minutes before', value: 30 },
+  { label: '1 hour before', value: 60 },
+  { label: '1 day before', value: 1440 }
+];
 
 export default function ModalScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams();
   const colorScheme = useColorScheme() ?? 'dark';
   const isDark = colorScheme === 'dark';
+  const colors = Colors[colorScheme];
   const { t } = useLanguage();
-  const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium');
-  const [reminder, setReminder] = useState(false);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date());
   const [timeEnabled, setTimeEnabled] = useState(false);
+  const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium');
+  const [selectedCategory, setSelectedCategory] = useState<string>('personal');
+  const [reminderOffset, setReminderOffset] = useState<number | null>(null);
+  const [syncToGoogle, setSyncToGoogle] = useState(true);
+  
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>('personal');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [showReminderModal, setShowReminderModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3B82F6');
 
   const { tasks, addTask, updateTask, deleteTask, categories, addCategory } = useTasks();
 
-  // Color options for new categories
-  const colorOptions = ['#3B82F6', '#8B5CF6', '#F59E0B', '#10B981', '#EC4899', '#14B8A6', '#6366F1', '#EF4444', '#6B7280'];
-
-  // Edit mode: check if we have an id param
   const isEditMode = !!id;
   const existingTask = isEditMode ? tasks.find(task => task.id === id) : null;
+  const selectedCat = categories.find(c => c.id === selectedCategory);
 
-  // Load task data when in edit mode
   useEffect(() => {
     if (isEditMode && existingTask) {
       setTitle(existingTask.title || '');
       setDescription(existingTask.description || '');
       setPriority(existingTask.priority || 'medium');
       setSelectedCategory(existingTask.category || 'personal');
+      setSyncToGoogle(existingTask.syncToGoogle !== false);
+      setReminderOffset(existingTask.reminderOffset ?? null);
+      
       if (existingTask.date) {
         const taskDate = new Date(existingTask.date);
         if (existingTask.time) {
@@ -72,15 +90,11 @@ export default function ModalScreen() {
     }
   }, [isEditMode, existingTask]);
 
-  // Date change handler
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setDate(selectedDate);
-    }
+    if (selectedDate) setDate(selectedDate);
   };
 
-  // Time change handler
   const onTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
     setShowTimePicker(Platform.OS === 'ios');
     if (selectedTime) {
@@ -90,7 +104,61 @@ export default function ModalScreen() {
     }
   };
 
-  // Delete task handler
+  const formatDate = (d: Date) => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (d.toDateString() === today.toDateString()) return t('today');
+    if (d.toDateString() === tomorrow.toDateString()) return 'Besok';
+    return d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+
+  const formatTime = (d: Date) => {
+    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
+  const getCategoryDisplayName = (cat: Category) => {
+    return cat.isDefault ? t(cat.name as any) : cat.name;
+  };
+
+  const getReminderLabel = () => {
+    if (reminderOffset === null) return t('none');
+    if (reminderOffset === 0) return 'At time of event';
+    if (reminderOffset === 60) return '1 hour before';
+    if (reminderOffset === 1440) return '1 day before';
+    return `${reminderOffset} minutes before`;
+  };
+
+  const handleSave = () => {
+    if (!title.trim()) return;
+
+    const timeString = timeEnabled ? formatTime(date) : undefined;
+    const taskData = {
+      title,
+      description,
+      priority,
+      category: selectedCategory,
+      tag: selectedCat?.isDefault ? t(selectedCat.name as any) : selectedCat?.name,
+      tagColor: selectedCat?.color,
+      date: date.toISOString().split('T')[0],
+      time: timeString,
+      syncToGoogle,
+      reminderOffset,
+    };
+
+    if (isEditMode && existingTask) {
+      updateTask(existingTask.id, taskData);
+    } else {
+      addTask({
+        id: uuidv4(),
+        ...taskData,
+        isCompleted: false,
+      });
+    }
+    router.back();
+  };
+
   const handleDelete = () => {
     Alert.alert(
       t('deleteTask'),
@@ -103,7 +171,7 @@ export default function ModalScreen() {
           onPress: () => {
             if (existingTask) {
               deleteTask(existingTask.id);
-              router.back();
+              router.replace('/(tabs)');
             }
           },
         },
@@ -111,111 +179,46 @@ export default function ModalScreen() {
     );
   };
 
-  // Format date for display
-  const formatDate = (d: Date) => {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    if (d.toDateString() === today.toDateString()) {
-      return t('today');
-    } else if (d.toDateString() === tomorrow.toDateString()) {
-      return 'Besok';
-    } else {
-      return d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
-    }
-  };
-
-  // Format time for display
-  const formatTime = (d: Date) => {
-    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
-  };
-
-  const handleSave = () => {
-    if (!title.trim()) return;
-
-    const selectedCat = categories.find(c => c.id === selectedCategory);
-
-    if (isEditMode && existingTask) {
-      // Update existing task
-      updateTask(existingTask.id, {
-        title,
-        description,
-        priority,
-        category: selectedCategory,
-        tag: selectedCat?.isDefault ? t(selectedCat.name as any) : selectedCat?.name,
-        tagColor: selectedCat?.color,
-        date: date.toISOString().split('T')[0],
-        time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      });
-    } else {
-      // Add new task
-      addTask({
-        id: Date.now().toString(),
-        title,
-        description,
-        priority,
-        category: selectedCategory,
-        tag: selectedCat?.isDefault ? t(selectedCat.name as any) : selectedCat?.name,
-        tagColor: selectedCat?.color,
-        date: date.toISOString().split('T')[0],
-        time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isCompleted: false,
-      });
-    }
-    router.back();
-  };
-
   const handleAddCategory = () => {
     if (!newCategoryName.trim()) return;
 
-    const newCategory: Category = {
+    addCategory({
       id: `custom_${Date.now()}`,
       name: newCategoryName.trim(),
       color: newCategoryColor,
       isDefault: false,
-    };
-
-    addCategory(newCategory);
-    setSelectedCategory(newCategory.id);
+    });
+    
+    setSelectedCategory(`custom_${Date.now()}`);
     setNewCategoryName('');
     setNewCategoryColor('#3B82F6');
     setShowAddCategoryModal(false);
     setShowCategoryModal(false);
   };
 
-  // Helper to get category display name
-  const getCategoryDisplayName = (cat: Category) => {
-    return cat.isDefault ? t(cat.name as any) : cat.name;
-  };
-
-  const selectedCat = categories.find(c => c.id === selectedCategory);
-
   return (
-    <ThemedView style={styles.container} darkColor="#000000">
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)' }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: colors.border, backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)' }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
-          <MaterialIcons name="close" size={24} color="#007AFF" />
+          <MaterialIcons name="close" size={24} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: isDark ? '#FFF' : '#000' }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
           {isEditMode ? t('editTask') : t('newTask')}
         </Text>
         <TouchableOpacity onPress={handleSave} style={styles.headerBtn}>
-          <MaterialIcons name="check" size={24} color="#007AFF" />
+          <MaterialIcons name="check" size={24} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Title & Desc Input */}
-        <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
-          <View style={[styles.inputRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
+        <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.inputRow, { borderBottomColor: colors.border }]}>
             <TextInput
-              style={[styles.inputTitle, { color: isDark ? '#FFF' : '#000' }]}
+              style={[styles.inputTitle, { color: colors.text }]}
               placeholder={t('title')}
-              placeholderTextColor={isDark ? '#8E8E93' : '#8E8E93'}
+              placeholderTextColor={colors.textSecondary}
               value={title}
               onChangeText={setTitle}
               multiline
@@ -225,9 +228,9 @@ export default function ModalScreen() {
           </View>
           <View style={styles.inputRowNoBorder}>
             <TextInput
-              style={[styles.inputDesc, { color: isDark ? '#FFF' : '#000' }]}
+              style={[styles.inputDesc, { color: colors.text }]}
               placeholder={t('notes')}
-              placeholderTextColor={isDark ? '#8E8E93' : '#8E8E93'}
+              placeholderTextColor={colors.textSecondary}
               multiline
               value={description}
               onChangeText={setDescription}
@@ -235,37 +238,34 @@ export default function ModalScreen() {
           </View>
         </View>
 
-        {/* Date & Time Options */}
-        <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
-          {/* Date */}
+        <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
           <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
             onPress={() => setShowDatePicker(true)}
           >
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: '#EF4444' }]}>
                 <MaterialIcons name="calendar-today" size={18} color="#FFF" />
               </View>
-              <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#000' }]}>{t('date')}</Text>
+              <Text style={[styles.menuLabel, { color: colors.text }]}>{t('date')}</Text>
             </View>
             <View style={styles.menuRight}>
-              <Text style={[styles.menuValue, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>{formatDate(date)}</Text>
-              <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
+              <Text style={[styles.menuValue, { color: colors.textSecondary }]}>{formatDate(date)}</Text>
+              <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
             </View>
           </TouchableOpacity>
 
-          {/* Time */}
           <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
             onPress={() => timeEnabled && setShowTimePicker(true)}
           >
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: '#3B82F6' }]}>
                 <MaterialIcons name="schedule" size={18} color="#FFF" />
               </View>
-              <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#000' }]}>{t('time')}</Text>
+              <Text style={[styles.menuLabel, { color: colors.text }]}>{t('time')}</Text>
               {timeEnabled && (
-                <Text style={[styles.timeValue, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>{formatTime(date)}</Text>
+                <Text style={[styles.timeValue, { color: colors.textSecondary }]}>{formatTime(date)}</Text>
               )}
             </View>
             <Switch
@@ -279,32 +279,32 @@ export default function ModalScreen() {
             />
           </TouchableOpacity>
 
-          {/* Reminder */}
-          <TouchableOpacity style={styles.menuItemNoBorder}>
+          <TouchableOpacity
+            style={styles.menuItemNoBorder}
+            onPress={() => setShowReminderModal(true)}
+          >
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: '#6366F1' }]}>
                 <MaterialIcons name="notifications" size={18} color="#FFF" />
               </View>
-              <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#000' }]}>{t('remindMe')}</Text>
+              <Text style={[styles.menuLabel, { color: colors.text }]}>{t('remindMe')}</Text>
             </View>
             <View style={styles.menuRight}>
-              <Text style={[styles.menuValue, { color: '#8E8E93' }]}>{t('none')}</Text>
-              <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
+              <Text style={[styles.menuValue, { color: '#8E8E93' }]}>{getReminderLabel()}</Text>
+              <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
             </View>
           </TouchableOpacity>
         </View>
 
-        {/* Priority & List */}
-        <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
-          {/* Priority */}
-          <View style={[styles.menuItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
+        <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: '#F97316' }]}>
                 <MaterialIcons name="priority-high" size={20} color="#FFF" />
               </View>
-              <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#000' }]}>{t('priority')}</Text>
+              <Text style={[styles.menuLabel, { color: colors.text }]}>{t('priority')}</Text>
             </View>
-            <View style={[styles.prioritySelector, { backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6' }]}>
+            <View style={[styles.prioritySelector, { backgroundColor: colors.surfaceSecondary }]}>
               {['low', 'medium', 'high'].map((p) => (
                 <TouchableOpacity
                   key={p}
@@ -315,7 +315,7 @@ export default function ModalScreen() {
                   ]}
                 >
                   <Text
-                    style={[styles.priorityText, { color: isDark ? '#FFF' : '#000', opacity: priority === p ? 1 : 0.5 }]}
+                    style={[styles.priorityText, { color: colors.text, opacity: priority === p ? 1 : 0.5 }]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
@@ -326,62 +326,61 @@ export default function ModalScreen() {
             </View>
           </View>
 
-          {/* Category */}
           <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
             onPress={() => setShowCategoryModal(true)}
           >
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: selectedCat?.color || '#3B82F6' }]}>
                 <MaterialIcons name={(selectedCat?.icon as any) || 'folder'} size={18} color="#FFF" />
               </View>
-              <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#000' }]}>{t('category')}</Text>
+              <Text style={[styles.menuLabel, { color: colors.text }]}>{t('category')}</Text>
             </View>
             <View style={styles.menuRight}>
-              <Text style={[styles.menuValue, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+              <Text style={[styles.menuValue, { color: colors.textSecondary }]}>
                 {selectedCat ? getCategoryDisplayName(selectedCat) : t('categoryPersonal')}
               </Text>
-              <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
+              <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
             </View>
           </TouchableOpacity>
 
-          {/* List / Google Tasks */}
-          <View style={[styles.menuItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
+          <View style={styles.menuItemNoBorder}>
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: '#FFF', borderWidth: 1, borderColor: isDark ? 'transparent' : '#E5E7EB' }]}>
-                {/* Google Icon Original */}
                 <Image
                   source={{ uri: 'https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png' }}
                   style={{ width: 18, height: 18 }}
                 />
               </View>
-              <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#000' }]}>{t('googleTasks')}</Text>
+              <Text style={[styles.menuLabel, { color: colors.text }]}>{t('googleTasks')}</Text>
             </View>
-            <View style={[styles.switchTrackActive, { backgroundColor: '#34C759' }]}>
-              <View style={[styles.switchThumb, { transform: [{ translateX: 20 }] }]} />
-            </View>
+            <Switch
+              value={syncToGoogle}
+              onValueChange={setSyncToGoogle}
+              trackColor={{ false: isDark ? '#3A3A3C' : '#E5E7EB', true: '#34C759' }}
+              thumbColor="#FFF"
+            />
           </View>
         </View>
 
-        {/* Delete Button - Only show in edit mode */}
         {isEditMode && (
           <TouchableOpacity
-            style={[styles.deleteBtn, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}
+            style={[styles.deleteBtn, { backgroundColor: colors.cardBackground }]}
             onPress={handleDelete}
           >
             <Text style={styles.deleteText}>{t('deleteTask')}</Text>
           </TouchableOpacity>
         )}
 
-        <Text style={styles.footerText}>Kini.do — {t('lastEdited')} 24 Okt 2023, 10:45</Text>
+        <Text style={styles.footerText}>Kini.do — {t('lastEdited')} {formatDate(date)}</Text>
       </ScrollView>
 
-      {/* Date Picker */}
       {showDatePicker && (
         <DateTimePicker
           value={date}
           mode="date"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          themeVariant={isDark ? 'dark' : 'light'}
           onChange={onDateChange}
           minimumDate={new Date()}
         />
@@ -393,12 +392,12 @@ export default function ModalScreen() {
           value={date}
           mode="time"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          themeVariant={isDark ? 'dark' : 'light'}
           onChange={onTimeChange}
           is24Hour={true}
         />
       )}
 
-      {/* Category Selection Modal */}
       <Modal
         visible={showCategoryModal}
         transparent
@@ -410,11 +409,11 @@ export default function ModalScreen() {
           activeOpacity={1}
           onPress={() => setShowCategoryModal(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('selectCategory')}</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('selectCategory')}</Text>
               <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
-                <MaterialIcons name="close" size={24} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                <MaterialIcons name="close" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -435,7 +434,7 @@ export default function ModalScreen() {
                       <View style={[styles.categoryDot, { backgroundColor: cat.color }]}>
                         {cat.icon && <MaterialIcons name={cat.icon as any} size={14} color="#FFF" />}
                       </View>
-                      <Text style={[styles.categoryLabel, { color: isDark ? '#FFF' : '#000' }]}>
+                      <Text style={[styles.categoryLabel, { color: colors.text }]}>
                         {getCategoryDisplayName(cat)}
                       </Text>
                     </View>
@@ -444,12 +443,11 @@ export default function ModalScreen() {
                     )}
                   </TouchableOpacity>
                   {index < categories.length - 1 && (
-                    <View style={[styles.categoryDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]} />
+                    <View style={[styles.categoryDivider, { backgroundColor: colors.border }]} />
                   )}
                 </React.Fragment>
               ))}
 
-              {/* Add Custom Category Button */}
               <TouchableOpacity
                 style={styles.addCategoryBtn}
                 onPress={() => {
@@ -465,7 +463,6 @@ export default function ModalScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Add New Category Modal */}
       <Modal
         visible={showAddCategoryModal}
         transparent
@@ -477,28 +474,25 @@ export default function ModalScreen() {
           activeOpacity={1}
           onPress={() => setShowAddCategoryModal(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('newCategory')}</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('newCategory')}</Text>
               <TouchableOpacity onPress={() => setShowAddCategoryModal(false)}>
-                <MaterialIcons name="close" size={24} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                <MaterialIcons name="close" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <TextInput
-              style={[styles.categoryInput, {
-                backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6',
-                color: isDark ? '#FFF' : '#000'
-              }]}
+              style={[styles.categoryInput, { backgroundColor: colors.surfaceSecondary, color: colors.text }]}
               placeholder={t('enterCategoryName')}
-              placeholderTextColor={isDark ? '#8E8E93' : '#9CA3AF'}
+              placeholderTextColor={colors.textSecondary}
               value={newCategoryName}
               onChangeText={setNewCategoryName}
             />
 
-            <Text style={[styles.colorLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Color</Text>
+            <Text style={[styles.colorLabel, { color: colors.textSecondary }]}>Color</Text>
             <View style={styles.colorGrid}>
-              {colorOptions.map((color) => (
+              {COLOR_OPTIONS.map((color) => (
                 <TouchableOpacity
                   key={color}
                   style={[
@@ -525,6 +519,51 @@ export default function ModalScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        visible={showReminderModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowReminderModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowReminderModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground, maxHeight: '50%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('remindMe')}</Text>
+              <TouchableOpacity onPress={() => setShowReminderModal(false)}>
+                <MaterialIcons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              {REMINDER_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={String(opt.value)}
+                  style={[
+                    styles.categoryOption,
+                    { borderBottomColor: colors.border, borderBottomWidth: 1 }
+                  ]}
+                  onPress={() => {
+                    setReminderOffset(opt.value);
+                    setShowReminderModal(false);
+                  }}
+                >
+                  <Text style={[styles.categoryLabel, { color: colors.text }]}>
+                    {opt.label === 'none' ? t('none') : opt.label}
+                  </Text>
+                  {reminderOffset === opt.value && (
+                    <MaterialIcons name="check" size={20} color="#3B82F6" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
     </ThemedView>
   );
 }
@@ -552,6 +591,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
+    fontFamily: 'Inter',
   },
   content: {
     padding: 16,
@@ -578,6 +618,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingVertical: 16,
     paddingRight: 16,
+    fontFamily: 'Inter',
   },
   inputDesc: {
     fontSize: 16,
@@ -585,6 +626,7 @@ const styles = StyleSheet.create({
     paddingRight: 16,
     minHeight: 120,
     textAlignVertical: 'top',
+    fontFamily: 'Inter',
   },
   menuItem: {
     flexDirection: 'row',
@@ -618,10 +660,12 @@ const styles = StyleSheet.create({
   menuLabel: {
     fontSize: 16,
     fontWeight: '500',
+    fontFamily: 'Inter',
   },
   timeValue: {
     fontSize: 14,
     marginLeft: 8,
+    fontFamily: 'Inter',
   },
   menuRight: {
     flexDirection: 'row',
@@ -630,6 +674,7 @@ const styles = StyleSheet.create({
   },
   menuValue: {
     fontSize: 16,
+    fontFamily: 'Inter',
   },
   switchContainer: {
 
@@ -660,20 +705,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 2,
     borderRadius: 8,
-    minHeight: 32,
+    gap: 2,
   },
   priorityOption: {
-    flex: 1,
     paddingHorizontal: 8,
     paddingVertical: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 7,
-    minWidth: 40,
+    borderRadius: 6,
+    minWidth: 45,
   },
   priorityText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    fontFamily: 'Inter',
   },
   deleteBtn: {
     paddingVertical: 16,
@@ -690,6 +736,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '500',
     color: '#FF3B30',
+    fontFamily: 'Inter',
   },
   footerText: {
     textAlign: 'center',
@@ -698,6 +745,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginTop: 4,
     marginBottom: 24,
+    fontFamily: 'Inter',
   },
   // Modal styles
   modalOverlay: {
@@ -723,6 +771,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
+    fontFamily: 'Inter',
   },
   categoryList: {
     maxHeight: 300,
@@ -750,6 +799,7 @@ const styles = StyleSheet.create({
   categoryLabel: {
     fontSize: 16,
     fontWeight: '500',
+    fontFamily: 'Inter',
   },
   categoryDivider: {
     height: 1,
@@ -767,6 +817,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#3B82F6',
+    fontFamily: 'Inter',
   },
   categoryInput: {
     fontSize: 16,
@@ -774,11 +825,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 12,
     marginBottom: 16,
+    fontFamily: 'Inter',
   },
   colorLabel: {
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 12,
+    fontFamily: 'Inter',
   },
   colorGrid: {
     flexDirection: 'row',
@@ -811,5 +864,6 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: 'Inter',
   },
 });

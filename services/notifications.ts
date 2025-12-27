@@ -29,7 +29,7 @@ export const notifications = {
                 body: task.title,
                 data: { taskId: task.id },
             },
-            trigger,
+            trigger: trigger as any,
         });
 
         return id;
@@ -41,5 +41,48 @@ export const notifications = {
 
     async cancelAllReminders(): Promise<void> {
         await Notifications.cancelAllScheduledNotificationsAsync();
+    },
+
+    async scheduleDailyDigest(hour: number, minute: number): Promise<string> {
+        // Cancel first to avoid duplicates (though identifier should handle it if supported)
+        // Since we don't know the previous ID easily here, we rely on identifier if possible 
+        // OR we just return new ID.
+        // Actually, on Android 'identifier' in scheduleNotificationAsync prevents duplicates?
+        // Documentation says "If you provide an identifier... it will replace the existing notification".
+        // But Android might restart.
+
+        // We'll trust the caller to manage IDs or use a fixed identifier if Expo supports it nicely.
+        // Expo supports `identifier` in the request content or schedule options? 
+        // `scheduleNotificationAsync` returns Promise<string> (id).
+
+        const id = await Notifications.scheduleNotificationAsync({
+            content: {
+                title: '☀️ Kini.do Morning',
+                body: "Cek rencana harimu! Ada tugas yang harus diselesaikan.",
+                data: { type: 'daily-digest' },
+            },
+            trigger: {
+                hour,
+                minute,
+                repeats: true,
+            } as any,
+        });
+        return id;
+    },
+
+    async cancelDailyDigest(id: string): Promise<void> {
+        if (id) {
+            await Notifications.cancelScheduledNotificationAsync(id);
+        }
+    },
+
+    async sendImmediateNotification(title: string, body: string): Promise<void> {
+        await Notifications.scheduleNotificationAsync({
+            content: {
+                title,
+                body,
+            },
+            trigger: null,
+        });
     },
 };

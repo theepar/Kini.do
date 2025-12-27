@@ -90,11 +90,14 @@ const styles = StyleSheet.create({
     },
     label: {
         fontWeight: '600',
+        fontFamily: 'Inter',
     },
     input: {
         borderWidth: 1,
+        fontFamily: 'Inter',
     },
     error: {
         fontWeight: '500',
+        fontFamily: 'Inter',
     },
 });

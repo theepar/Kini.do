@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { ThemedView } from '@/components/ThemedView';
-import { Colors } from '@/constants/Colors'; // Fix: Import Colors
+import { Colors, hexToRgba } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 import { useAuth } from '@/context/AuthContext';
@@ -28,28 +28,16 @@ export default function MainScreen() {
   const isDark = colorScheme === 'dark';
   const colors = Colors[colorScheme];
   const [activeTab, setActiveTab] = useState('today');
-  const { tasks, getCategoryById } = useTasks();
+  const { tasks, getCategoryDisplay } = useTasks();
   const { t } = useLanguage();
   const { user } = useAuth();
   const { autoSyncEnabled, lastSyncTime, isSyncing } = useCalendarSync();
 
-  // Format last sync time
   const formatLastSync = () => {
     if (!lastSyncTime) return '';
     return lastSyncTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
-  // Get category display name
-  const getCategoryDisplay = (categoryId?: string) => {
-    if (!categoryId) return null;
-    const category = getCategoryById(categoryId);
-    if (!category) return null;
-    // Default categories use translation keys
-    const displayName = category.isDefault ? t(category.name as any) : category.name;
-    return { name: displayName, color: category.color };
-  };
-
-  // Filter tasks
   const highPriorityTasks = tasks.filter(t => t.priority === 'high' && !t.isCompleted);
   const otherTasks = tasks.filter(t => t.priority !== 'high' && !t.isCompleted);
 
@@ -62,40 +50,29 @@ export default function MainScreen() {
 
   const renderTag = (text?: string, color?: string) => {
     if (!text || !color) return null;
-    let bg, textCol;
-    if (color === 'purple') {
-      bg = isDark ? 'rgba(168, 85, 247, 0.2)' : '#F3E8FF';
-      textCol = isDark ? '#D8B4FE' : '#7E22CE';
-    } else if (color === 'blue') {
-      bg = isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE';
-      textCol = isDark ? '#93C5FD' : '#1D4ED8';
-    } else if (color === 'green') {
-      bg = isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7';
-      textCol = isDark ? '#4ADE80' : '#15803D';
-    } else {
-      bg = isDark ? 'rgba(234, 179, 8, 0.2)' : '#FEF9C3';
-      textCol = isDark ? '#FACC15' : '#CA8A04';
-    }
+
+    const bg = color === 'purple' ? hexToRgba(Colors.light.tint, 0.15)
+      : hexToRgba('#F59E0B', 0.15);
+
+    const colorMap: Record<string, { bg: string, text: string }> = {
+      purple: { bg: hexToRgba('#A855F7', isDark ? 0.2 : 0.15), text: isDark ? '#D8B4FE' : '#7E22CE' },
+      blue: { bg: hexToRgba('#3B82F6', isDark ? 0.2 : 0.15), text: isDark ? '#93C5FD' : '#1D4ED8' },
+      green: { bg: hexToRgba('#22C55E', isDark ? 0.2 : 0.15), text: isDark ? '#4ADE80' : '#15803D' },
+      yellow: { bg: hexToRgba('#EAB308', isDark ? 0.2 : 0.15), text: isDark ? '#FACC15' : '#CA8A04' },
+    };
+
+    const style = colorMap[color] || colorMap.yellow;
 
     return (
-      <View style={[styles.tag, { backgroundColor: bg }]}>
-        <Text style={[styles.tagText, { color: textCol }]}>{text}</Text>
+      <View style={[styles.tag, { backgroundColor: style.bg }]}>
+        <Text style={[styles.tagText, { color: style.text }]}>{text}</Text>
       </View>
     );
   };
 
-  // Render category badge with hex color
   const renderCategory = (categoryId?: string) => {
     const category = getCategoryDisplay(categoryId);
     if (!category) return null;
-
-    // Convert hex to rgba for background
-    const hexToRgba = (hex: string, alpha: number) => {
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    };
 
     const bg = hexToRgba(category.color, isDark ? 0.2 : 0.15);
 
@@ -107,105 +84,88 @@ export default function MainScreen() {
   };
 
   return (
-    <ThemedView style={styles.container} darkColor={isDark ? '#000000' : colors.background}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* Header */}
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: insets.top + 10,
-            backgroundColor: isDark
-              ? 'rgba(0, 0, 0, 0.95)'
-              : 'rgba(242, 242, 247, 0.95)',
-          },
-        ]}
-      >
+      {/* Top App Bar */}
+      <View style={[styles.header, {
+        paddingTop: insets.top + 10,
+        backgroundColor: colors.background,
+        borderBottomColor: colors.borderLight
+      }]}>
         <View style={styles.headerTop}>
           <View>
-            <Text style={[styles.headerLabel, { color: isDark ? '#6B7280' : '#9CA3AF' }]}>
-              {t('taskList')}
-            </Text>
+            <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>{t('taskList')}</Text>
             <View style={styles.titleRow}>
-              <Text style={[styles.headerTitle, { color: isDark ? '#FFF' : '#000' }]}>
-                Kini.do
-              </Text>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>Kini.do</Text>
+              <View style={styles.dot} />
             </View>
           </View>
-
-          <TouchableOpacity style={styles.profileButton}>
+          <TouchableOpacity
+            style={styles.profileBtn}
+            onPress={() => router.push('/(tabs)/settings')}
+          >
             <Image
-              source={{
-                uri: user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.user_metadata?.display_name || user?.email || 'User')}&background=007AFF&color=fff`,
-              }}
-              style={styles.profileImage}
+              source={{ uri: user?.user_metadata?.avatar_url || "https://ui-avatars.com/api/?name=" + encodeURIComponent(user?.user_metadata?.display_name || user?.email || 'User') + "&background=007AFF&color=fff" }}
+              style={styles.avatarProfile}
             />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.headerMetadata}>
-          {autoSyncEnabled ? (
-            <View style={[styles.syncBadge, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-              <MaterialIcons name={isSyncing ? "sync" : "cloud-done"} size={16} color="#22C55E" />
-              <Text style={[styles.syncText, { color: isDark ? '#D1D5DB' : '#4B5563' }]}>{t('googleSyncActive')}</Text>
-            </View>
-          ) : (
-            <View style={[styles.syncBadge, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-              <MaterialIcons name="cloud-off" size={16} color="#9CA3AF" />
-              <Text style={[styles.syncText, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Sync Off</Text>
-            </View>
-          )}
-          {autoSyncEnabled && lastSyncTime && (
-            <Text style={[styles.lastUpdated, { color: isDark ? '#9CA3AF' : '#9CA3AF' }]}>{t('lastUpdated')}: {formatLastSync()}</Text>
-          )}
+        {/* Sync Status Bar */}
+        <View style={styles.syncContainer}>
+          <View
+            style={[styles.syncBadge, { backgroundColor: hexToRgba(Colors.light.success, isDark ? 0.1 : 0.05) }]}
+          >
+            <MaterialIcons name="sync" size={12} color={isDark ? Colors.dark.success : Colors.light.success} />
+            <Text style={[styles.syncText, { color: isDark ? Colors.dark.success : Colors.light.success }]}>
+              Google Sync Aktif • {formatLastSync()}
+            </Text>
+          </View>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsContainer}
-          style={styles.tabsScroll}
-        >
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.key;
-            // Light mode: Active is Black bg, White text.
-            // Dark mode: Active is White bg, Black text.
-            const activeBg = isDark ? '#FFFFFF' : '#000000';
-            const activeText = isDark ? '#000000' : '#FFFFFF';
-            const inactiveBg = isDark ? '#1C1C1E' : '#FFFFFF';
-            const inactiveText = isDark ? '#D1D5DB' : '#4B5563';
+        {/* Custom Tabs */}
+        <View style={styles.tabsContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
+            {tabs.map(tab => {
+              const isActive = activeTab === tab.key;
+              // Use Colors constants for consistent theming
+              const activeBg = colors.tabActive;
+              const inactiveBg = colors.cardBackground;
+              const activeTextColor = isDark ? colors.background : colors.cardBackground;
+              const inactiveTextColor = colors.textSecondary;
 
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                style={[
-                  styles.tab,
-                  {
-                    backgroundColor: isActive ? activeBg : inactiveBg,
-                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-                    borderWidth: 1,
-                  }
-                ]}
-                onPress={() => setActiveTab(tab.key)}
-              >
-                <Text
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
                   style={[
-                    styles.tabText,
-                    { color: isActive ? activeText : inactiveText }
+                    styles.tab,
+                    {
+                      backgroundColor: isActive ? activeBg : inactiveBg,
+                      borderColor: colors.border,
+                      borderWidth: (isActive && !isDark) ? 0 : 1,
+                    },
+                    isActive && {
+                      shadowColor: colors.text,
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.1,
+                      shadowRadius: 8,
+                      elevation: 2
+                    }
                   ]}
                 >
-                  {tab.label}
-                </Text>
-                {tab.key === 'today' && isActive && (
-                  <View style={[styles.tabBadge, { backgroundColor: isDark ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.2)' }]}>
-                    <Text style={[styles.tabBadgeText, { color: isActive ? activeText : inactiveText }]}>4</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+                  <Text style={[
+                    styles.tabText,
+                    { color: isActive ? activeTextColor : inactiveTextColor }
+                  ]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
       </View>
 
       <ScrollView
@@ -214,9 +174,9 @@ export default function MainScreen() {
       >
         {/* High Priority Section */}
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('highPriority')}</Text>
-          <TouchableOpacity style={[styles.moreBtn, { backgroundColor: isDark ? '#1C1C1E' : '#F3F4F6' }]}>
-            <MaterialIcons name="more-horiz" size={20} color="#9CA3AF" />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('highPriority')}</Text>
+          <TouchableOpacity style={[styles.moreBtn, { backgroundColor: colors.cardBackground }]}>
+            <MaterialIcons name="more-horiz" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -229,15 +189,15 @@ export default function MainScreen() {
               style={[
                 styles.card,
                 {
-                  backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                  borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'transparent',
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.border,
                 },
               ]}
             >
               <TouchableOpacity
                 style={[
                   styles.checkbox,
-                  { borderColor: isDark ? '#6B7280' : '#D1D5DB' },
+                  { borderColor: colors.textSecondary },
                 ]}
               />
               <View style={styles.cardContent}>
@@ -245,7 +205,7 @@ export default function MainScreen() {
                   <Text
                     style={[
                       styles.cardTitle,
-                      { color: isDark ? '#FFF' : '#000' },
+                      { color: colors.text },
                     ]}
                     numberOfLines={1}
                   >
@@ -256,7 +216,7 @@ export default function MainScreen() {
                 <Text
                   style={[
                     styles.cardDesc,
-                    { color: isDark ? '#9CA3AF' : '#6B7280' },
+                    { color: colors.textSecondary },
                   ]}
                   numberOfLines={2}
                 >
@@ -299,7 +259,7 @@ export default function MainScreen() {
                             styles.avatar,
                             {
                               marginLeft: i > 0 ? -8 : 0,
-                              borderColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                              borderColor: colors.cardBackground,
                             },
                           ]}
                         />
@@ -314,7 +274,7 @@ export default function MainScreen() {
 
         {/* Nanti Section */}
         <View style={[styles.sectionHeader, { marginTop: 32 }]}>
-          <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('later')}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('later')}</Text>
         </View>
 
         <View style={styles.cardList}>
@@ -322,25 +282,26 @@ export default function MainScreen() {
             <TouchableOpacity
               key={task.id}
               activeOpacity={0.9}
+              onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
               style={[
                 styles.smallCard,
                 {
-                  backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                  borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'transparent',
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.border,
                 },
               ]}
             >
               <TouchableOpacity
                 style={[
                   styles.checkbox,
-                  { borderColor: isDark ? '#6B7280' : '#D1D5DB' },
+                  { borderColor: colors.textSecondary },
                 ]}
               />
               <View style={styles.cardContent}>
                 <Text
                   style={[
                     styles.cardTitle,
-                    { color: isDark ? '#FFF' : '#000', fontSize: 16 },
+                    { color: colors.text, fontSize: 16 },
                   ]}
                 >
                   {task.title}
@@ -349,7 +310,7 @@ export default function MainScreen() {
                   <Text
                     style={[
                       styles.metaText,
-                      { color: isDark ? '#9CA3AF' : '#6B7280' },
+                      { color: colors.textSecondary },
                     ]}
                   >
                     {task.time}
@@ -416,16 +377,38 @@ export default function MainScreen() {
                     </>
                   )}
                 </View>
+                {/* Avatars for Other Tasks */}
+                {((task.sharedWith && task.sharedWith.length > 0)) && (
+                  <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                    {(task.sharedWith).slice(0, 3).map((email, i) => (
+                      <Image
+                        key={i}
+                        source={{ uri: `https://ui-avatars.com/api/?name=${email}&background=random&color=fff` }}
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 10,
+                          marginLeft: i > 0 ? -6 : 0,
+                          borderWidth: 1.5,
+                          borderColor: colors.cardBackground,
+                        }}
+                      />
+                    ))}
+                  </View>
+                )}
               </View>
-              {task.flagged && (
-                <TouchableOpacity style={styles.flagBtn}>
-                  <MaterialIcons
-                    name="flag"
-                    size={20}
-                    color={isDark ? '#4B5563' : '#D1D5DB'}
-                  />
-                </TouchableOpacity>
-              )}
+
+              {
+                task.flagged && (
+                  <TouchableOpacity style={styles.flagBtn}>
+                    <MaterialIcons
+                      name="flag"
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                )
+              }
             </TouchableOpacity>
           ))}
         </View>
@@ -433,13 +416,13 @@ export default function MainScreen() {
 
       {/* FAB */}
       <TouchableOpacity
-        style={[styles.fab, { backgroundColor: isDark ? '#007AFF' : '#000000' }]}
+        style={[styles.fab, { backgroundColor: colors.primary }]}
         activeOpacity={0.8}
         onPress={() => router.push('/modal')}
       >
         <MaterialIcons name="add" size={32} color="#FFFFFF" />
       </TouchableOpacity>
-    </ThemedView>
+    </ThemedView >
   );
 }
 
@@ -457,7 +440,41 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
+    marginBottom: 12,
+  },
+  logo: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#13a4ec',
+    letterSpacing: -0.5,
+    fontFamily: 'Inter',
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34d399',
+    marginTop: 18,
+  },
+  profileBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: 'rgba(0,0,0,0.05)',
+    overflow: 'hidden',
+  },
+  avatarProfile: {
+    width: '100%',
+    height: '100%',
+  },
+  syncContainer: {
+    paddingHorizontal: 24,
     marginBottom: 16,
+  },
+  tabsContent: {
+    gap: 12,
+    paddingRight: 24,
   },
   headerLabel: {
     fontSize: 13,
@@ -465,6 +482,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
     marginBottom: 4,
+    fontFamily: 'Inter',
   },
   titleRow: {
     flexDirection: 'row',
@@ -475,6 +493,7 @@ const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: '800',
     letterSpacing: -1,
+    fontFamily: 'Inter',
   },
   titleDot: {
     width: 8,
@@ -530,10 +549,12 @@ const styles = StyleSheet.create({
   syncText: {
     fontSize: 12,
     fontWeight: '500',
+    fontFamily: 'Inter',
   },
   lastUpdated: {
     fontSize: 12,
     fontWeight: '500',
+    fontFamily: 'Inter',
   },
   tabsScroll: {
     paddingLeft: 24,
@@ -558,6 +579,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.2,
+    fontFamily: 'Inter',
   },
   tabBadge: {
     width: 20,
@@ -570,6 +592,7 @@ const styles = StyleSheet.create({
   tabBadgeText: {
     fontSize: 11,
     fontWeight: 'bold',
+    fontFamily: 'Inter',
   },
   contentContainer: {
     paddingHorizontal: 20,
@@ -586,6 +609,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    fontFamily: 'Inter',
   },
   moreBtn: {
     width: 32,
@@ -643,6 +667,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
     marginRight: 8,
+    fontFamily: 'Inter',
   },
   tag: {
     paddingHorizontal: 10,
@@ -653,11 +678,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
+    fontFamily: 'Inter',
   },
   cardDesc: {
     fontSize: 15,
     marginBottom: 12,
     lineHeight: 22,
+    fontFamily: 'Inter',
   },
   cardFooter: {
     flexDirection: 'row',
@@ -676,6 +703,7 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: 'Inter',
   },
   avatars: {
     flexDirection: 'row',
@@ -694,6 +722,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 13,
+    fontFamily: 'Inter',
   },
   metaDot: {
     width: 4,
@@ -708,6 +737,7 @@ const styles = StyleSheet.create({
   miniTagText: {
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: 'Inter',
   },
   flagBtn: {
     padding: 8,

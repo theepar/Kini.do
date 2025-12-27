@@ -24,12 +24,10 @@ import { useCalendarSync } from '@/context/CalendarSyncContext';
 import { Language, languageNames, supportedLanguages, useLanguage } from '@/context/LanguageContext';
 import { StartWeekDay, getStartWeekDayName, usePreferences } from '@/context/PreferencesContext';
 import { useTasks } from '@/context/TaskContext';
-import { useTheme } from '@/context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t, languageName, isTranslating } = useLanguage();
   const { resetTasks } = useTasks();
   const { signOut, user } = useAuth();
@@ -38,30 +36,19 @@ export default function SettingsScreen() {
     startWeekOn, setStartWeekOn,
     notificationsEnabled, setNotificationsEnabled,
     deadlineReminders, setDeadlineReminders,
-    dailyDigest, setDailyDigest
+    dailyDigest, setDailyDigest,
+    themeMode, setThemeMode
   } = usePreferences();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'dark';
   const isDark = colorScheme === 'dark';
   const colors = Colors[colorScheme];
 
-  // State for modals
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showWeekStartModal, setShowWeekStartModal] = useState(false);
-
-  // Specific colors from design
-  const bgLight = '#f6f7f8';
-  const bgDark = '#000000';
-  const surfaceLight = '#ffffff';
-  const surfaceDark = '#1C1C1E';
-  const primary = '#13a4ec';
-  const textDark = '#ffffff';
-  const textLight = '#0f172a'; // slate-900
-  const textGrayDark = '#9db0b9';
-  const textGrayLight = '#64748b'; // slate-500
+  const [showThemeModal, setShowThemeModal] = useState(false);
 
 
-  // Format last sync time
   const formatLastSync = () => {
     if (!lastSyncTime) return 'Belum pernah sync';
     const now = new Date();
@@ -75,12 +62,6 @@ export default function SettingsScreen() {
     return lastSyncTime.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
 
-  const backgroundColor = isDark ? bgDark : bgLight;
-  const surfaceColor = isDark ? surfaceDark : surfaceLight;
-  const textColor = isDark ? textDark : textLight;
-  const subtextColor = isDark ? textGrayDark : textGrayLight;
-  const borderColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
-
   const handleSelectLanguage = async (lang: Language) => {
     if (lang === language) {
       setShowLanguageModal(false);
@@ -91,7 +72,7 @@ export default function SettingsScreen() {
   };
 
   const renderSectionHeader = (title: string) => (
-    <Text style={[styles.sectionHeader, { color: subtextColor }]}>
+    <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
       {title}
     </Text>
   );
@@ -122,7 +103,7 @@ export default function SettingsScreen() {
     onPress?: () => void;
   }) => (
     <TouchableOpacity
-      style={[styles.menuItem, { backgroundColor: surfaceColor }]}
+      style={[styles.menuItem, { backgroundColor: colors.cardBackground }]}
       onPress={isToggle ? () => onToggle(!toggleValue) : onPress}
       activeOpacity={isToggle ? 1 : 0.7}
       disabled={isToggle}
@@ -132,16 +113,16 @@ export default function SettingsScreen() {
           <MaterialIcons name={icon} size={20} color={iconColor} />
         </View>
         <View style={styles.textContainer}>
-          <Text style={[styles.menuTitle, { color: textColor }]}>{title}</Text>
-          {subtitle && <Text style={[styles.menuSubtitle, { color: subtextColor }]}>{subtitle}</Text>}
+          <Text style={[styles.menuTitle, { color: colors.text }]}>{title}</Text>
+          {subtitle && <Text style={[styles.menuSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>}
         </View>
       </View>
 
       <View style={styles.menuItemRight}>
-        {value && <Text style={[styles.valueText, { color: subtextColor }]}>{value}</Text>}
+        {value && <Text style={[styles.valueText, { color: colors.textSecondary }]}>{value}</Text>}
         {isToggle ? (
           <Switch
-            trackColor={{ false: isDark ? '#283339' : '#cbd5e1', true: primary }}
+            trackColor={{ false: isDark ? '#283339' : '#cbd5e1', true: colors.primary }}
             thumbColor={'#FFFFFF'}
             ios_backgroundColor={isDark ? '#283339' : '#cbd5e1'}
             onValueChange={onToggle}
@@ -155,33 +136,31 @@ export default function SettingsScreen() {
   );
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor }]} darkColor={bgDark} lightColor={bgLight}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* Top App Bar */}
-      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(246, 247, 248, 0.95)', borderBottomColor: borderColor }]}>
-        <Text style={[styles.pageTitle, { color: textColor }]}>{t('settings')}</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : colors.background, borderBottomColor: colors.border }]}>
+        <Text style={[styles.pageTitle, { color: colors.text }]}>{t('settings')}</Text>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Header */}
         <View style={styles.section}>
-          <View style={[styles.profileCard, { backgroundColor: surfaceColor, borderColor }]}>
+          <View style={[styles.profileCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
             <View style={styles.avatarContainer}>
               <Image
                 source={{ uri: user?.user_metadata?.avatar_url || "https://ui-avatars.com/api/?name=" + encodeURIComponent(user?.user_metadata?.display_name || user?.email || 'User') + "&background=007AFF&color=fff" }}
                 style={styles.avatar}
               />
-              <View style={[styles.verifiedBadge, { backgroundColor: primary, borderColor: surfaceColor }]}>
+              <View style={[styles.verifiedBadge, { backgroundColor: colors.primary, borderColor: colors.cardBackground }]}>
                 <MaterialIcons name="check" size={10} color="#FFF" />
               </View>
             </View>
             <View style={styles.profileInfo}>
-              <Text style={[styles.profileName, { color: textColor }]}>{user?.user_metadata?.display_name || user?.user_metadata?.full_name || 'User'}</Text>
-              <Text style={[styles.profileEmail, { color: subtextColor }]}>{user?.email || ''}</Text>
+              <Text style={[styles.profileName, { color: colors.text }]}>{user?.user_metadata?.display_name || user?.user_metadata?.full_name || 'User'}</Text>
+              <Text style={[styles.profileEmail, { color: colors.textSecondary }]}>{user?.email || ''}</Text>
               <TouchableOpacity
                 style={styles.syncStatus}
                 onPress={syncNow}
@@ -190,10 +169,10 @@ export default function SettingsScreen() {
                 <MaterialIcons
                   name={isSyncing ? 'sync' : 'sync'}
                   size={14}
-                  color={autoSyncEnabled ? primary : subtextColor}
+                  color={autoSyncEnabled ? colors.primary : colors.textSecondary}
                   style={isSyncing ? { transform: [{ rotate: '45deg' }] } : undefined}
                 />
-                <Text style={[styles.syncText, { color: subtextColor }]}>
+                <Text style={[styles.syncText, { color: colors.textSecondary }]}>
                   {autoSyncEnabled ? (isSyncing ? 'Menyinkronkan...' : `Sinkron: ${formatLastSync()}`) : 'Sync nonaktif'}
                 </Text>
               </TouchableOpacity>
@@ -201,10 +180,9 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Akun & Sinkronisasi */}
         <View style={styles.section}>
           {renderSectionHeader(t('accountSync'))}
-          <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
+          <View style={[styles.menuGroup, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
             {renderMenuItem({
               icon: 'account-circle',
               iconColor: isDark ? '#FFF' : '#334155',
@@ -213,7 +191,7 @@ export default function SettingsScreen() {
               subtitle: `${t('connectedAs')} Deva`,
               value: t('manage'),
             })}
-            <View style={[styles.separator, { backgroundColor: borderColor }]} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
             {renderMenuItem({
               icon: 'cloud-sync',
               iconColor: isDark ? '#FFF' : '#334155',
@@ -227,10 +205,9 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Notifikasi */}
         <View style={styles.section}>
           {renderSectionHeader(t('notifications'))}
-          <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
+          <View style={[styles.menuGroup, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
             {renderMenuItem({
               icon: 'notifications',
               iconColor: '#FFF',
@@ -240,7 +217,7 @@ export default function SettingsScreen() {
               toggleValue: notificationsEnabled,
               onToggle: setNotificationsEnabled
             })}
-            <View style={[styles.separator, { backgroundColor: borderColor }]} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
             {renderMenuItem({
               icon: 'timer',
               iconColor: isDark ? '#FFF' : '#334155',
@@ -250,7 +227,7 @@ export default function SettingsScreen() {
               toggleValue: deadlineReminders,
               onToggle: setDeadlineReminders
             })}
-            <View style={[styles.separator, { backgroundColor: borderColor }]} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
             {renderMenuItem({
               icon: 'forward-to-inbox',
               iconColor: isDark ? '#FFF' : '#334155',
@@ -263,21 +240,19 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Umum */}
         <View style={styles.section}>
           {renderSectionHeader(t('general'))}
-          <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
+          <View style={[styles.menuGroup, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
 
             {renderMenuItem({
-              icon: 'dark-mode',
+              icon: 'brightness-6',
               iconColor: '#FFF',
               iconBg: '#334155',
-              title: t('darkMode'),
-              isToggle: true,
-              toggleValue: theme === 'dark',
-              onToggle: () => toggleTheme(),
+              title: 'Appearance',
+              value: themeMode === 'system' ? 'System' : themeMode === 'dark' ? 'Dark' : 'Light',
+              onPress: () => setShowThemeModal(true),
             })}
-            <View style={[styles.separator, { backgroundColor: borderColor }]} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
             {renderMenuItem({
               icon: 'language',
               iconColor: '#FFF',
@@ -286,7 +261,7 @@ export default function SettingsScreen() {
               value: languageName,
               onPress: () => setShowLanguageModal(true),
             })}
-            <View style={[styles.separator, { backgroundColor: borderColor }]} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
             {renderMenuItem({
               icon: 'calendar-today',
               iconColor: '#FFF',
@@ -298,17 +273,16 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Dukungan */}
         <View style={styles.section}>
           {renderSectionHeader(t('support'))}
-          <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
+          <View style={[styles.menuGroup, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
             {renderMenuItem({
               icon: 'help',
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
               title: t('helpFaq'),
             })}
-            <View style={[styles.separator, { backgroundColor: borderColor }]} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
             {renderMenuItem({
               icon: 'security',
               iconColor: isDark ? '#FFF' : '#334155',
@@ -318,10 +292,9 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Data */}
         <View style={styles.section}>
           {renderSectionHeader(t('data'))}
-          <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
+          <View style={[styles.menuGroup, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
             {renderMenuItem({
               icon: 'refresh',
               iconColor: '#FFF',
@@ -347,7 +320,7 @@ export default function SettingsScreen() {
                 );
               },
             })}
-            <View style={[styles.separator, { backgroundColor: borderColor }]} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
             {renderMenuItem({
               icon: 'celebration',
               iconColor: '#FFF',
@@ -363,10 +336,9 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Footer */}
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.logoutBtn, { backgroundColor: surfaceColor, borderColor }]}
+            style={[styles.logoutBtn, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}
             onPress={() => {
               Alert.alert(
                 t('logout'),
@@ -378,6 +350,7 @@ export default function SettingsScreen() {
                     style: 'destructive',
                     onPress: async () => {
                       await signOut();
+                      router.replace('/login');
                     }
                   },
                 ]
@@ -388,14 +361,13 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           <View style={styles.versionInfo}>
-            <Text style={[styles.versionText, { color: subtextColor }]}>{t('version')} 1.0.0</Text>
+            <Text style={[styles.versionText, { color: colors.textSecondary }]}>{t('version')} 1.0.0</Text>
           </View>
         </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Language Selection Modal */}
       <Modal
         visible={showLanguageModal}
         transparent
@@ -407,22 +379,21 @@ export default function SettingsScreen() {
           activeOpacity={1}
           onPress={() => !isTranslating && setShowLanguageModal(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: surfaceColor }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>{t('selectLanguage')}</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('selectLanguage')}</Text>
               {!isTranslating && (
                 <TouchableOpacity onPress={() => setShowLanguageModal(false)}>
-                  <MaterialIcons name="close" size={24} color={subtextColor} />
+                  <MaterialIcons name="close" size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* Loading indicator when translating (only after selecting) */}
             {isTranslating ? (
               <View style={styles.translatingContainer}>
                 <ActivityIndicator size="large" color="#3B82F6" />
-                <Text style={[styles.translatingText, { color: textColor, marginTop: 12 }]}>{t('translating')}</Text>
-                <Text style={[styles.translatingSubText, { color: subtextColor }]}>Please wait...</Text>
+                <Text style={[styles.translatingText, { color: colors.text, marginTop: 12 }]}>{t('translating')}</Text>
+                <Text style={[styles.translatingSubText, { color: colors.textSecondary }]}>Please wait...</Text>
               </View>
             ) : (
               <ScrollView style={styles.languageList} showsVerticalScrollIndicator={false}>
@@ -442,8 +413,8 @@ export default function SettingsScreen() {
                             <MaterialIcons name="language" size={20} color={language === lang ? '#FFF' : colors.textSecondary} />
                           </View>
                           <View>
-                            <Text style={[styles.languageLabel, { color: textColor }]}>{langInfo.nativeName}</Text>
-                            <Text style={[styles.languageSub, { color: subtextColor }]}>{langInfo.englishName}</Text>
+                            <Text style={[styles.languageLabel, { color: colors.text }]}>{langInfo.nativeName}</Text>
+                            <Text style={[styles.languageSub, { color: colors.textSecondary }]}>{langInfo.englishName}</Text>
                           </View>
                         </View>
                         {language === lang && (
@@ -451,7 +422,7 @@ export default function SettingsScreen() {
                         )}
                       </TouchableOpacity>
                       {index < supportedLanguages.length - 1 && (
-                        <View style={[styles.modalSeparator, { backgroundColor: borderColor }]} />
+                        <View style={[styles.modalSeparator, { backgroundColor: colors.border }]} />
                       )}
                     </React.Fragment>
                   );
@@ -462,7 +433,6 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Week Start Selection Modal */}
       <Modal
         visible={showWeekStartModal}
         transparent
@@ -474,11 +444,11 @@ export default function SettingsScreen() {
           activeOpacity={1}
           onPress={() => setShowWeekStartModal(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: surfaceColor }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>{t('startWeekOn')}</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('startWeekOn')}</Text>
               <TouchableOpacity onPress={() => setShowWeekStartModal(false)}>
-                <MaterialIcons name="close" size={24} color={subtextColor} />
+                <MaterialIcons name="close" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -498,20 +468,77 @@ export default function SettingsScreen() {
                     <View style={[styles.languageIcon, { backgroundColor: startWeekOn === day ? '#22C55E' : (isDark ? colors.surface : colors.surfaceSecondary) }]}>
                       <MaterialIcons name="calendar-today" size={20} color={startWeekOn === day ? '#FFF' : colors.textSecondary} />
                     </View>
-                    <Text style={[styles.languageLabel, { color: textColor }]}>{t(day as any)}</Text>
+                    <Text style={[styles.languageLabel, { color: colors.text }]}>{t(day as any)}</Text>
                   </View>
                   {startWeekOn === day && (
                     <MaterialIcons name="check-circle" size={24} color="#22C55E" />
                   )}
                 </TouchableOpacity>
                 {index < 2 && (
-                  <View style={[styles.modalSeparator, { backgroundColor: borderColor }]} />
+                  <View style={[styles.modalSeparator, { backgroundColor: colors.border }]} />
                 )}
               </React.Fragment>
             ))}
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        visible={showThemeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowThemeModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowThemeModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Appearance</Text>
+              <TouchableOpacity onPress={() => setShowThemeModal(false)}>
+                <MaterialIcons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {(['system', 'light', 'dark'] as const).map((mode, index) => (
+              <React.Fragment key={mode}>
+                <TouchableOpacity
+                  style={[
+                    styles.languageOption,
+                    themeMode === mode && { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF' }
+                  ]}
+                  onPress={() => {
+                    setThemeMode(mode);
+                    setShowThemeModal(false);
+                  }}
+                >
+                  <View style={styles.languageInfo}>
+                    <View style={[styles.languageIcon, { backgroundColor: themeMode === mode ? '#3B82F6' : (isDark ? '#2C2C2E' : '#E5E7EB') }]}>
+                      <MaterialIcons
+                        name={mode === 'system' ? 'settings' : mode === 'dark' ? 'dark-mode' : 'light-mode'}
+                        size={20}
+                        color={themeMode === mode ? '#FFF' : '#6B7280'}
+                      />
+                    </View>
+                    <Text style={[styles.languageLabel, { color: colors.text }]}>
+                      {mode === 'system' ? 'System Default' : mode === 'dark' ? 'Dark Mode' : 'Light Mode'}
+                    </Text>
+                  </View>
+                  {themeMode === mode && (
+                    <MaterialIcons name="check-circle" size={24} color="#3B82F6" />
+                  )}
+                </TouchableOpacity>
+                {index < 2 && (
+                  <View style={[styles.modalSeparator, { backgroundColor: colors.border }]} />
+                )}
+              </React.Fragment>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
     </ThemedView>
   );
 }
@@ -540,6 +567,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     letterSpacing: -0.5,
+    fontFamily: 'Inter',
   },
   content: {
     paddingBottom: 24,
@@ -554,6 +582,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 8,
     paddingHorizontal: 4,
+    fontFamily: 'Inter',
   },
   profileCard: {
     flexDirection: 'row',
@@ -595,10 +624,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 2,
+    fontFamily: 'Inter',
   },
   profileEmail: {
     fontSize: 14,
     marginBottom: 4,
+    fontFamily: 'Inter',
   },
   syncStatus: {
     flexDirection: 'row',
@@ -607,6 +638,7 @@ const styles = StyleSheet.create({
   },
   syncText: {
     fontSize: 11,
+    fontFamily: 'Inter',
   },
   menuGroup: {
     borderRadius: 16,
@@ -640,9 +672,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     marginBottom: 2,
+    fontFamily: 'Inter',
   },
   menuSubtitle: {
     fontSize: 12,
+    fontFamily: 'Inter',
   },
   menuItemRight: {
     flexDirection: 'row',
@@ -651,6 +685,7 @@ const styles = StyleSheet.create({
   },
   valueText: {
     fontSize: 13,
+    fontFamily: 'Inter',
   },
   separator: {
     height: 1,
@@ -674,12 +709,14 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: 'Inter',
   },
   versionInfo: {
     alignItems: 'center',
   },
   versionText: {
     fontSize: 12,
+    fontFamily: 'Inter',
   },
   // Modal styles
   modalOverlay: {
@@ -709,6 +746,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
+    fontFamily: 'Inter',
   },
   languageOption: {
     flexDirection: 'row',
@@ -733,10 +771,12 @@ const styles = StyleSheet.create({
   languageLabel: {
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: 'Inter',
   },
   languageSub: {
     fontSize: 13,
     marginTop: 2,
+    fontFamily: 'Inter',
   },
   modalSeparator: {
     height: 1,
@@ -750,10 +790,12 @@ const styles = StyleSheet.create({
   translatingText: {
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: 'Inter',
   },
   translatingSubText: {
     fontSize: 13,
     marginTop: 4,
+    fontFamily: 'Inter',
   },
   languageList: {
     maxHeight: 400,

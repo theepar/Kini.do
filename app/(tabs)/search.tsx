@@ -1,4 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
     ScrollView,
@@ -52,7 +53,7 @@ export default function SearchScreen() {
     });
 
     return (
-        <ThemedView style={styles.container} darkColor={colors.background}>
+        <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
             {/* Header */}
@@ -114,17 +115,35 @@ export default function SearchScreen() {
 
                 {/* Search Results */}
                 {/* Only show if searching */}
-                {searchText.length > 0 ? (
+                {searchText.length > 0 || true ? (
                     <View style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>{t('searchResults')}</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>
+                            {searchText.length > 0 ? t('searchResults') : t('upcoming')}
+                        </Text>
                         <View style={styles.resultList}>
-                            {filteredTasks.length === 0 ? (
-                                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>{t('noResults')}</Text>
-                            ) : (
-                                filteredTasks.map(task => (
-                                    <TouchableOpacity key={task.id} style={[styles.resultCard, { backgroundColor: isDark ? colors.cardBackground : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9' }]}>
+                            {(() => {
+                                const today = new Date().toISOString().split('T')[0];
+                                const displayTasks = searchText.length > 0
+                                    ? filteredTasks
+                                    : tasks.filter(t => !t.isCompleted && (!t.date || t.date >= today)).sort((a, b) => (a.date || '') > (b.date || '') ? 1 : -1);
+
+                                if (displayTasks.length === 0) {
+                                    return (
+                                        <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>
+                                            {searchText.length > 0 ? t('noResults') : "No upcoming tasks"}
+                                        </Text>
+                                    );
+                                }
+
+                                return displayTasks.map(task => (
+                                    <TouchableOpacity
+                                        key={task.id}
+                                        style={[styles.resultCard, { backgroundColor: isDark ? colors.cardBackground : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9' }]}
+                                        onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
+                                    >
                                         <TouchableOpacity
                                             style={[styles.checkbox, { borderColor: isDark ? '#64748B' : '#CBD5E1', backgroundColor: task.isCompleted ? colors.tint : 'transparent', borderWidth: task.isCompleted ? 0 : 2, justifyContent: 'center', alignItems: 'center' }]}
+                                            onPress={() => toggleTask(task.id)}
                                         >
                                             {task.isCompleted && <MaterialIcons name="check" size={14} color="#FFF" />}
                                         </TouchableOpacity>
@@ -136,26 +155,16 @@ export default function SearchScreen() {
                                             <View style={styles.resultMeta}>
                                                 <View style={styles.metaItem}>
                                                     <MaterialIcons name="schedule" size={14} color="#94a3b8" style={{ marginRight: 4 }} />
-                                                    <Text style={[styles.metaText, { color: '#94a3b8' }]}>{task.time || 'No time'}</Text>
+                                                    <Text style={[styles.metaText, { color: '#94a3b8' }]}>{task.time || task.date || "No date"}</Text>
                                                 </View>
                                             </View>
                                         </View>
                                     </TouchableOpacity>
-                                ))
-                            )}
+                                ));
+                            })()}
                         </View>
                     </View>
-                ) : (
-                    // Default State (Recent & Suggested)
-                    <View>
-                        {/* Recent Searches (Mock UI for now) */}
-                        <View style={styles.section}>
-                            <View style={styles.sectionHeader}>
-                                <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('recentSearches')}</Text>
-                            </View>
-                        </View>
-                    </View>
-                )}
+                ) : null}
                 <View style={{ height: 100 }} />
             </ScrollView>
         </ThemedView>

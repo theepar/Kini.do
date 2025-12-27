@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useColorScheme as useRNColorScheme } from 'react-native';
+import { usePreferences } from '@/context/PreferencesContext';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import React, { createContext } from 'react';
 
 type ThemeType = 'light' | 'dark';
 
@@ -16,54 +16,26 @@ const ThemeContext = createContext<ThemeContextType>({
     setTheme: () => { },
 });
 
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-    const systemColorScheme = useRNColorScheme();
-    const [theme, setThemeState] = useState<ThemeType>('dark');
-    const [isLoaded, setIsLoaded] = useState(false);
-
-    useEffect(() => {
-        loadTheme();
-    }, []);
-
-    const loadTheme = async () => {
-        try {
-            const storedTheme = await AsyncStorage.getItem('userTheme');
-            if (storedTheme === 'light' || storedTheme === 'dark') {
-                setThemeState(storedTheme);
-            } else {
-                // Default to dark if nothing stored, or system if you prefer
-                setThemeState('dark');
-            }
-        } catch (e) {
-            console.error('Failed to load theme', e);
-        } finally {
-            setIsLoaded(true);
-        }
-    };
-
-    const setTheme = async (newTheme: ThemeType) => {
-        setThemeState(newTheme);
-        try {
-            await AsyncStorage.setItem('userTheme', newTheme);
-        } catch (e) {
-            console.error('Failed to save theme', e);
-        }
-    };
-
-    const toggleTheme = () => {
-        setTheme(theme === 'dark' ? 'light' : 'dark');
-    };
-
-    // Prevent flash of wrong theme by rendering nothing until loaded?
-    // Or just render children with default (dark). isLoaded checks can be done if strict.
-    // For now we render children immediately to adapt quickly, but might flash.
-    // Given user preference is dark, default dark is safe.
-
-    return (
-        <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
-            {children}
-        </ThemeContext.Provider>
-    );
+    return <>{children}</>;
 }
 
-export const useTheme = () => useContext(ThemeContext);
+
+export function useTheme(): ThemeContextType {
+    const colorScheme = useColorScheme();
+    const { themeMode, setThemeMode } = usePreferences();
+    
+    const theme: ThemeType = colorScheme === 'dark' ? 'dark' : 'light';
+    
+    const toggleTheme = async () => {
+        // Toggle between light and dark (not system)
+        await setThemeMode(theme === 'dark' ? 'light' : 'dark');
+    };
+    
+    const setTheme = async (newTheme: ThemeType) => {
+        await setThemeMode(newTheme);
+    };
+    
+    return { theme, toggleTheme, setTheme };
+}

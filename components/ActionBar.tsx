@@ -22,7 +22,7 @@ export function ActionBar({ children, style }: ActionBarProps) {
             style={[
                 styles.container,
                 {
-                    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                    backgroundColor: colors.cardBackground,
                     borderTopColor: colors.border,
                 },
                 style,

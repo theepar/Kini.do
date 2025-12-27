@@ -1,9 +1,13 @@
+import { notifications } from '@/services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 export type StartWeekDay = 'sunday' | 'monday' | 'saturday';
+export type ThemeMode = 'system' | 'light' | 'dark';
 
 interface PreferencesContextType {
+    themeMode: ThemeMode;
+    setThemeMode: (mode: ThemeMode) => Promise<void>;
     startWeekOn: StartWeekDay;
     setStartWeekOn: (day: StartWeekDay) => Promise<void>;
     notificationsEnabled: boolean;
@@ -12,6 +16,8 @@ interface PreferencesContextType {
     setDeadlineReminders: (enabled: boolean) => Promise<void>;
     dailyDigest: boolean;
     setDailyDigest: (enabled: boolean) => Promise<void>;
+    dailyDigestTime: string;
+    setDailyDigestTime: (time: string) => Promise<void>;
 }
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
@@ -19,17 +25,22 @@ const PreferencesContext = createContext<PreferencesContextType | undefined>(und
 const PREFERENCES_KEY = '@app_preferences';
 
 interface Preferences {
+    themeMode: ThemeMode;
     startWeekOn: StartWeekDay;
     notificationsEnabled: boolean;
     deadlineReminders: boolean;
     dailyDigest: boolean;
+    dailyDigestTime: string;
+    dailyDigestNotificationId?: string;
 }
 
 const defaultPreferences: Preferences = {
+    themeMode: 'system',
     startWeekOn: 'monday',
     notificationsEnabled: true,
     deadlineReminders: true,
     dailyDigest: false,
+    dailyDigestTime: '07:00',
 };
 
 export function PreferencesProvider({ children }: { children: React.ReactNode }) {
@@ -60,6 +71,10 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
         }
     };
 
+    const setThemeMode = async (mode: ThemeMode) => {
+        await savePreferences({ ...preferences, themeMode: mode });
+    };
+
     const setStartWeekOn = async (day: StartWeekDay) => {
         await savePreferences({ ...preferences, startWeekOn: day });
     };
@@ -73,12 +88,35 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     };
 
     const setDailyDigest = async (enabled: boolean) => {
-        await savePreferences({ ...preferences, dailyDigest: enabled });
+        let notifId = preferences.dailyDigestNotificationId;
+
+        if (enabled) {
+            const [h, m] = preferences.dailyDigestTime.split(':').map(Number);
+            notifId = await notifications.scheduleDailyDigest(h, m);
+        } else {
+            if (notifId) {
+                await notifications.cancelDailyDigest(notifId);
+                notifId = undefined;
+            }
+        }
+        await savePreferences({ ...preferences, dailyDigest: enabled, dailyDigestNotificationId: notifId });
+    };
+
+    const setDailyDigestTime = async (time: string) => {
+        let notifId = preferences.dailyDigestNotificationId;
+        if (preferences.dailyDigest) {
+            if (notifId) await notifications.cancelDailyDigest(notifId);
+            const [h, m] = time.split(':').map(Number);
+            notifId = await notifications.scheduleDailyDigest(h, m);
+        }
+        await savePreferences({ ...preferences, dailyDigestTime: time, dailyDigestNotificationId: notifId });
     };
 
     return (
         <PreferencesContext.Provider
             value={{
+                themeMode: preferences.themeMode,
+                setThemeMode,
                 startWeekOn: preferences.startWeekOn,
                 setStartWeekOn,
                 notificationsEnabled: preferences.notificationsEnabled,
@@ -87,6 +125,8 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
                 setDeadlineReminders,
                 dailyDigest: preferences.dailyDigest,
                 setDailyDigest,
+                dailyDigestTime: preferences.dailyDigestTime,
+                setDailyDigestTime,
             }}
         >
             {children}

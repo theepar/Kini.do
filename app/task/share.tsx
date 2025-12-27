@@ -1,7 +1,8 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     Image,
     ScrollView,
     StatusBar,
@@ -15,9 +16,11 @@ import {
 import { ActionBar } from '@/components/ActionBar';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
+import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTasks } from '@/context/TaskContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { Profile, userService } from '@/services/userService';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,12 +29,15 @@ export default function ShareScreen() {
     const { id } = useLocalSearchParams();
     const colorScheme = useColorScheme() ?? 'dark';
     const isDark = colorScheme === 'dark';
-    const colors = Colors[colorScheme];
+    // const colors = Colors[colorScheme]; // Colors might be undefined if not typed correctly, assume Colors.light/dark exist
+    const colors = colorScheme === 'dark' ? Colors.dark : Colors.light;
     const { t } = useLanguage();
-    const { tasks, getCategoryById } = useTasks();
+    const { tasks, getCategoryById, updateTask } = useTasks();
 
     // Find task from id
     const task = tasks.find(t => t.id === id);
+    const { user } = useAuth();
+    const isOwner = !task?.ownerId || task.ownerId === user?.id;
 
     // Get category display
     const getCategoryDisplay = (categoryId?: string) => {
@@ -46,25 +52,154 @@ export default function ShareScreen() {
     const taskTitle = task?.title || t('task');
     const taskTag = category?.name || task?.tag || t('task');
 
-    // Selected contacts state
-    const [selectedContacts, setSelectedContacts] = useState<string[]>(['sarah']);
+    // Frequent Collaborators Logic
+    const [suggestedContacts, setSuggestedContacts] = useState<Profile[]>([]);
+
+    useEffect(() => {
+        const loadSuggestions = async () => {
+            const emailCounts = new Map<string, number>();
+            tasks.forEach(t => {
+                if (t.sharedWith) {
+                    t.sharedWith.forEach(e => {
+                        if (e.includes('@')) emailCounts.set(e, (emailCounts.get(e) || 0) + 1);
+                    });
+                }
+            });
+
+            if (emailCounts.size === 0) {
+                setSuggestedContacts([]);
+                return;
+            }
+
+            const sorted = Array.from(emailCounts.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(x => x[0]);
+
+            if (sorted.length > 0) {
+                const profiles = await userService.getProfilesByEmails(sorted);
+                setSuggestedContacts(profiles);
+            }
+        };
+        loadSuggestions();
+    }, [tasks]);
+
+    // Roles State (Editors & Viewers)
+    const [editors, setEditors] = useState<string[]>(task?.sharedWith || []);
+    const [viewers, setViewers] = useState<string[]>(task?.sharedWithViewers || []);
+    const [currentAccessProfiles, setCurrentAccessProfiles] = useState<Profile[]>([]);
+
+    // Load profiles for all selected emails
+    useEffect(() => {
+        const all = [...editors, ...viewers];
+        const loadAccessProfiles = async () => {
+            if (all.length > 0) {
+                const profiles = await userService.getProfilesByEmails(all);
+                setCurrentAccessProfiles(profiles);
+            } else {
+                setCurrentAccessProfiles([]);
+            }
+        };
+        loadAccessProfiles();
+    }, [editors.length, viewers.length]);
+
+
+    // Role Selection State
+    const [selectedRole, setSelectedRole] = useState<'editor' | 'viewer'>('editor');
+
+    // Search State
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<Profile[]>([]);
+    const [searching, setSearching] = useState(false);
+
+    useEffect(() => {
+        const delayDebounceFn = setTimeout(async () => {
+            if (searchQuery.length > 2) {
+                setSearching(true);
+                try {
+                    const results = await userService.searchUsers(searchQuery);
+                    setSearchResults(results.filter(r => r.email !== user?.email));
+                } finally {
+                    setSearching(false);
+                }
+            } else {
+                setSearchResults([]);
+            }
+        }, 500);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchQuery]);
+
+    const toggleSelection = (email: string) => {
+        const isEditor = editors.includes(email);
+        const isViewer = viewers.includes(email);
+
+        if (isEditor) {
+            if (selectedRole === 'editor') {
+                // Same role: Toggle Off
+                setEditors(prev => prev.filter(e => e !== email));
+            } else {
+                // Different role: Switch to Viewer
+                setEditors(prev => prev.filter(e => e !== email));
+                setViewers(prev => [...prev, email]);
+            }
+        } else if (isViewer) {
+            if (selectedRole === 'viewer') {
+                // Same role: Toggle Off
+                setViewers(prev => prev.filter(e => e !== email));
+            } else {
+                // Different role: Switch to Editor
+                setViewers(prev => prev.filter(e => e !== email));
+                setEditors(prev => [...prev, email]);
+            }
+        } else {
+            // Not selected: Add based on selectedRole
+            if (selectedRole === 'editor') {
+                setEditors(prev => [...prev, email]);
+            } else {
+                setViewers(prev => [...prev, email]);
+            }
+        }
+    };
+
+    const changeRole = (email: string) => {
+        if (editors.includes(email)) {
+            // Change to Viewer
+            setEditors(prev => prev.filter(e => e !== email));
+            setViewers(prev => [...prev, email]);
+        } else if (viewers.includes(email)) {
+            // Change to Editor
+            setViewers(prev => prev.filter(e => e !== email));
+            setEditors(prev => [...prev, email]);
+        }
+    };
+
+    const handleShare = () => {
+        if (!task) return;
+        updateTask(task.id, { sharedWith: editors, sharedWithViewers: viewers });
+        router.back();
+    };
 
     return (
-        <ThemedView style={styles.container} darkColor={colors.background}>
+        <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
             {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: colors.border, backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)' }]}>
-                <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
-                    <MaterialIcons name="close" size={24} color={colors.primary} />
+            <View style={[styles.header, {
+                paddingTop: insets.top + 10,
+                borderBottomColor: colors.borderLight,
+                backgroundColor: colors.background
+            }]}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+                    <MaterialIcons name="arrow-back-ios" size={24} color={colors.primary} />
                 </TouchableOpacity>
                 <Text style={[styles.headerTitle, { color: colors.text }]}>{t('shareTask')}</Text>
-                <TouchableOpacity style={styles.headerBtn} onPress={() => console.log('Kirim')}>
+                <TouchableOpacity style={styles.headerBtn}>
                     <MaterialIcons name="send" size={24} color={colors.primary} />
                 </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.content}>
+            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
                 {/* Shared Item */}
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{t('sharedItem')}</Text>
@@ -81,7 +216,19 @@ export default function ShareScreen() {
                                 <Text style={[styles.editBtnText, { color: colors.text }]}>{t('change')}</Text>
                             </TouchableOpacity>
                         </View>
-                        <TouchableOpacity style={styles.accessRow}>
+                        <TouchableOpacity
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                paddingVertical: 14,
+                                paddingHorizontal: 14,
+                                borderTopWidth: 1,
+                                borderTopColor: colors.border
+                            }}
+                            onPress={() => isOwner && setSelectedRole(prev => prev === 'editor' ? 'viewer' : 'editor')}
+                            disabled={!isOwner}
+                        >
                             <View style={styles.accessLeft}>
                                 <View style={[styles.accessIcon, { backgroundColor: isDark ? 'rgba(249, 115, 22, 0.2)' : '#FFEDD5' }]}>
                                     <MaterialIcons name="lock-open" size={18} color={isDark ? '#FB923C' : '#C2410C'} />
@@ -89,108 +236,150 @@ export default function ShareScreen() {
                                 <Text style={[styles.accessLabel, { color: colors.text }]}>{t('userAccess')}</Text>
                             </View>
                             <View style={styles.accessRight}>
-                                <Text style={[styles.accessValue, { color: colors.textSecondary }]}>{t('canEdit')}</Text>
-                                <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
+                                <Text style={[styles.accessValue, { color: colors.textSecondary }]}>
+                                    {selectedRole === 'editor' ? (t('canEdit') || 'Can Edit') : 'Can View'}
+                                </Text>
+                                {isOwner && <MaterialIcons name="arrow-drop-down" size={24} color={colors.textSecondary} />}
                             </View>
                         </TouchableOpacity>
                     </View>
                 </View>
 
-                {/* Search */}
-                <View style={styles.searchContainer}>
-                    <MaterialIcons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
-                    <TextInput
-                        style={[styles.searchInput, { backgroundColor: isDark ? '#2C2C2E' : 'rgba(118, 118, 128, 0.12)', color: isDark ? '#FFF' : '#000' }]}
-                        placeholder="Nama, email, atau kontak"
-                        placeholderTextColor="#8E8E93"
-                    />
-                </View>
 
-                {/* Suggested */}
-                <View style={styles.section}>
-                    <Text style={[styles.sectionTitle, { color: '#8E8E93' }]}>DISARANKAN</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestedList}>
-                        {/* Suggested Users */}
-                        {[
-                            { name: 'Deva', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCV0_lUD82f22JRZlnzaMucG1MtvwGb6frcszZ_gjOfmPMAmCNoOgwxgU11YvdBEkZQYPRP0909Y_LZBHfDIB9nn3hln0INJSpx_LDvlwSm_BfjZt5vntm-IWZ2MCeFtlZplq45MbzUjI9I-aDvb_dJXrkujs--SvsV31xXxMCUz7ciHPQLcGbkUw1CZETTS11yh0nczIBfR_gwVtl7iyTKz-AzR82TJM_LxkKFTiSXPorQbqbCaaf4-GNUEnypxi1w9qMfk7ZPSSI' },
-                            { name: 'Siti', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDo_0ye_ffT7Qjph0HIOq-b-D4kZzCRui4u_77EH81YnwjlOV3sbw3B8qMtE0g7bGC5J3Jed_YNGGIBnCGNNpExWnhpyhEceslYi_XA_NQEssOYd_xIj2o9RjEWnx8G0PmbmS8NZTScxec7p5YWIlgRgK3T2NN7koG9mLemnqxGFqDETD_2qxcG2L_8cgTX2FRbfP5rpfgLoLLVHcZrzD7FghAIUhWSTJr5zq7UuwlhE6GnqP-asyprlzeZbBP2rAD9yUZFtP5u7zI', selected: true },
-                            { name: 'Andi', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDlCSsGESbBotjsDUqhAsUAh59AGRmzahUZdA7ESjJNAz_QVQlmNvY9yXJ2iqri0aOybxheWQsd1g432Plo9fbhZhOELCtzDBDzuU4A7qwhKKg2SLk5VrNV74wB-6GbV1rCDiFBoy056WrQshMVakQMPEzaVddbEpQQqAp-jsI9QL605ZfL-lyQAf7s2OAvnyvbL24chHBH7wFFbQ5bK5hqv5aDytN-eZfl7Bqbaq2cNX5HJtNxLMNmUzr4uMl2nowS-Nu0b0E_mn8' },
-                            { name: 'Dewi', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDW84ZvrVserk9hmww3BVe6VqameIc0hqDL8-0PnSHOpzsxQOa5tZ-TcnVsbPl261wcPb7NIRCS7-hgVDNgJGDgBTORL7tpUQL5MXg-808QcBFklL6d6h-CveMxDdl1ez9Z3hBvLM_aX-XlJy4hLVYd0VXEBsFVuq-QWwYAN9nKbiH7ho5C3WjLzo1yrN5JA9y50J1HDQYmfy9aBXr4qy-zuMqbxfJ4wMcgw_tLUyLVaIWa_Ml1hnllH9d0ZbW7t8Y-9D_inGVGu3w' },
-                        ].map((user, i) => (
-                            <TouchableOpacity key={i} style={styles.suggestedUser}>
-                                <View style={[styles.avatarContainer, user.selected && { borderColor: '#007AFF', borderWidth: 2 }]}>
-                                    <Image source={{ uri: user.img }} style={styles.avatarLarge} />
-                                    {user.selected && (
-                                        <View style={styles.checkBadge}>
-                                            <MaterialIcons name="check" size={10} color="#FFF" />
+
+                {/* Search */}{isOwner && (
+                    <View style={styles.searchContainer}>
+                        <MaterialIcons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
+                        <TextInput
+                            style={[styles.searchInput, { backgroundColor: isDark ? '#2C2C2E' : 'rgba(118, 118, 128, 0.12)', color: isDark ? '#FFF' : '#000' }]}
+                            placeholder="Nama, email, atau kontak"
+                            placeholderTextColor="#8E8E93"
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                        />
+                        {searching && <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />}
+                    </View>)}
+
+                {/* Search Results */}
+                {searchQuery.length > 0 && (
+                    <View style={styles.section}>
+                        <Text style={[styles.sectionTitle, { color: '#8E8E93' }]}>HASIL PENCARIAN</Text>
+                        <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+                            {searchResults.map((user, i) => {
+                                const isSelected = editors.includes(user.email) || viewers.includes(user.email);
+                                return (
+                                    <TouchableOpacity key={user.id} onPress={() => toggleSelection(user.email)} style={[styles.contactItem, { backgroundColor: isSelected ? 'rgba(0,122,255,0.05)' : 'transparent', borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
+                                        {user.avatar_url ? (
+                                            <Image source={{ uri: user.avatar_url }} style={styles.contactImage} />
+                                        ) : (
+                                            <View style={[styles.contactAvatar, { backgroundColor: '#6366F1' }]}>
+                                                <Text style={styles.initials}>{user.full_name ? user.full_name.charAt(0) : user.email.charAt(0).toUpperCase()}</Text>
+                                            </View>
+                                        )}
+
+                                        <View style={styles.contactInfo}>
+                                            <View style={styles.contactRow}>
+                                                <View>
+                                                    <Text style={[styles.contactName, { color: isDark ? '#FFF' : '#000' }]}>{user.full_name || 'User'}</Text>
+                                                    <Text style={styles.contactEmail}>{user.email}</Text>
+                                                </View>
+                                                <View style={[styles.checkbox, isSelected && styles.checkboxSelected, { borderColor: isDark ? '#4B5563' : '#D1D5DB' }]}>
+                                                    {isSelected && <MaterialIcons name="check" size={14} color="#FFF" />}
+                                                </View>
+                                            </View>
                                         </View>
-                                    )}
-                                </View>
-                                <Text style={[styles.userName, { color: user.selected ? '#007AFF' : (isDark ? '#FFF' : '#000') }]}>{user.name}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                </View>
-
-                {/* All Contacts */}
-                <View style={styles.section}>
-                    <Text style={[styles.sectionTitle, { color: '#8E8E93' }]}>SEMUA KONTAK</Text>
-                    <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
-                        {/* Copy Link */}
-                        <TouchableOpacity style={[styles.contactItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
-                            <View style={[styles.contactAvatar, { backgroundColor: isDark ? '#374151' : '#EFF6FF' }]}>
-                                <MaterialIcons name="link" size={20} color="#007AFF" />
-                            </View>
-                            <View style={styles.contactInfo}>
-                                <View style={styles.contactRow}>
-                                    <View>
-                                        <Text style={[styles.contactName, { color: '#007AFF' }]}>Salin Link Undangan</Text>
-                                        <Text style={styles.contactEmail}>Siapapun dengan link bisa melihat</Text>
-                                    </View>
-                                    <MaterialIcons name="chevron-right" size={20} color="#8E8E93" />
-                                </View>
-                            </View>
-                        </TouchableOpacity>
-
-                        {/* Contacts List */}
-                        {[
-                            { name: 'Rina Wati', email: 'rina.wati@gmail.com', initials: 'RW', color: '#6366F1' },
-                            { name: 'Dimas Prasetyo', email: 'dimas.p@kantor.co.id', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB0jMAEma0Tq4krQ5qzl4uKL9XDDAD1KSRic8pABLBkS0n7veY_TkDOzURJ_0zmFf9Ma0H4v4N1-CkXDncc6k_Bd327Z7JM98GKvkFZ20BspBhZH4cgh0sCgITx9JIH8laQYzhyKmOxxD5yiN7fslNINeiPmZh3tgaG0rxMQyLxDFHnyFzj1mxS9gZ9aiq_j1X_bRpuqhywRptTe2rxdwPSc1oAq59FJBToWpZuRRFea5GEnfmFwGZYyaWSz2XWZhagXs7tQqmQDmk' },
-                            { name: 'Sarah Johnson', email: 'sarah.j@gmail.com', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCG_tmeRkmDDoTsAO-A1nf_40EpivS_7rrStPNk3Cb9vJJGjKTazO_aMVpfpJXChas1o-gLjkmeyNWlkDyuvzM_adYGvR9TB8OqBmNWgRuawar6MugYkG6C-IrBTTA81ByrYKy1RUa2_dvet7lLq5NxmdTG7IWblvwDEeG49KcuimrMhlE_nkMYcaE4slsnYI77xiUUWmvyUdbXO3hKc28ql1W7yj718Bftf458zH_8_pdCCnaTM_7wr77FKggmlOBHXOD104kebvI', selected: true },
-                            { name: 'Arif Nugroho', email: 'arif.nugroho@yahoo.com', initials: 'AN', color: '#F97316' },
-                        ].map((contact, i) => (
-                            <TouchableOpacity key={i} style={[styles.contactItem, { backgroundColor: contact.selected ? 'rgba(0,122,255,0.05)' : 'transparent', borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6', borderBottomWidth: i < 3 ? 1 : 0 }]}>
-                                {contact.img ? (
-                                    <Image source={{ uri: contact.img }} style={styles.contactImage} />
-                                ) : (
-                                    <View style={[styles.contactAvatar, { backgroundColor: contact.color }]}>
-                                        <Text style={styles.initials}>{contact.initials}</Text>
-                                    </View>
-                                )}
-
-                                <View style={styles.contactInfo}>
-                                    <View style={styles.contactRow}>
-                                        <View>
-                                            <Text style={[styles.contactName, { color: isDark ? '#FFF' : '#000' }]}>{contact.name}</Text>
-                                            <Text style={styles.contactEmail}>{contact.email}</Text>
-                                        </View>
-                                        <View style={[styles.checkbox, contact.selected && styles.checkboxSelected, { borderColor: isDark ? '#4B5563' : '#D1D5DB' }]}>
-                                            {contact.selected && <MaterialIcons name="check" size={14} color="#FFF" />}
-                                        </View>
-                                    </View>
-                                </View>
-                            </TouchableOpacity>
-                        ))}
+                                    </TouchableOpacity>
+                                );
+                            })}
+                            {searchResults.length === 0 && !searching && (
+                                <Text style={{ padding: 16, color: colors.textSecondary, textAlign: 'center' }}>Tidak ditemukan user.</Text>
+                            )}
+                        </View>
                     </View>
-                </View>
+                )}
+
+                {/* People with Access (Existing) */}
+                {(editors.length > 0 || viewers.length > 0) && searchQuery.length === 0 && (
+                    <View style={styles.section}>
+                        <Text style={[styles.sectionTitle, { color: '#8E8E93' }]}>AKSES SAAT INI ({editors.length + viewers.length})</Text>
+                        <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+                            {[...editors, ...viewers].map((email, i, arr) => {
+                                const profile = currentAccessProfiles.find(p => p.email === email);
+                                const name = profile?.full_name || email;
+                                const avatar = profile?.avatar_url;
+                                const isEditor = editors.includes(email);
+
+                                return (
+                                    <View key={email} style={[styles.contactItem, { borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6', justifyContent: 'space-between' }]}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                                            {avatar ? (
+                                                <Image source={{ uri: avatar }} style={styles.contactImage} />
+                                            ) : (
+                                                <View style={[styles.contactAvatar, { backgroundColor: '#10B981' }]}>
+                                                    <Text style={styles.initials}>{name.charAt(0).toUpperCase()}</Text>
+                                                </View>
+                                            )}
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[styles.contactName, { color: isDark ? '#FFF' : '#000' }]} numberOfLines={1}>{name}</Text>
+                                                <Text style={[styles.contactEmail, { color: '#8E8E93' }]} numberOfLines={1}>{email}</Text>
+                                            </View>
+                                        </View>
+
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                            <TouchableOpacity onPress={() => isOwner && changeRole(email)} disabled={!isOwner} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: isEditor ? 'rgba(0,122,255,0.1)' : 'rgba(142, 142, 147, 0.2)', borderRadius: 6, opacity: isOwner ? 1 : 0.6 }}>
+                                                <Text style={{ fontSize: 11, color: isEditor ? '#007AFF' : (isDark ? '#D1D5DB' : '#6B7280'), fontWeight: '500' }}>
+                                                    {isEditor ? 'Editor' : 'Viewer'}
+                                                </Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity onPress={() => (isOwner || email === user?.email) && toggleSelection(email)} disabled={!isOwner && email !== user?.email}>
+                                                <MaterialIcons name={email === user?.email ? "exit-to-app" : "remove-circle-outline"} size={22} color={(email === user?.email) ? "#FF9500" : "#FF3B30"} style={{ opacity: (!isOwner && email !== user?.email) ? 0.3 : 1 }} />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    </View>
+                )}
+
+                {/* Suggested based on Frequency */}
+                {isOwner && suggestedContacts.length > 0 && (
+                    <View style={styles.section}>
+                        <Text style={[styles.sectionTitle, { color: '#8E8E93' }]}>DISARANKAN (Sering Berkolaborasi)</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestedList}>
+                            {suggestedContacts.map((user, i) => {
+                                const isSelected = editors.includes(user.email) || viewers.includes(user.email);
+                                return (
+                                    <TouchableOpacity key={user.id} style={styles.suggestedUser} onPress={() => toggleSelection(user.email)}>
+                                        <View style={[styles.avatarContainer, isSelected && { borderColor: '#007AFF', borderWidth: 2 }]}>
+                                            {user.avatar_url ? (
+                                                <Image source={{ uri: user.avatar_url }} style={styles.avatarLarge} />
+                                            ) : (
+                                                <View style={[styles.avatarLarge, { backgroundColor: '#6366F1', alignItems: 'center', justifyContent: 'center' }]}>
+                                                    <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '600' }}>{user.full_name ? user.full_name[0] : user.email[0].toUpperCase()}</Text>
+                                                </View>
+                                            )}
+                                            {isSelected && (
+                                                <View style={styles.checkBadge}>
+                                                    <MaterialIcons name="check" size={10} color="#FFF" />
+                                                </View>
+                                            )}
+                                        </View>
+                                        <Text style={[styles.userName, { color: isSelected ? '#007AFF' : (isDark ? '#FFF' : '#000') }]}>{user.full_name || user.email}</Text>
+                                    </TouchableOpacity>
+                                )
+                            })}
+                        </ScrollView>
+                    </View>
+                )}
 
                 <View style={{ height: 100 }} />
             </ScrollView>
 
             {/* Bottom Bar */}
             <ActionBar>
-                <TouchableOpacity style={styles.sendBtn}>
-                    <Text style={styles.sendBtnText}>Bagikan ke 1 Kontak</Text>
+                <TouchableOpacity style={styles.sendBtn} onPress={handleShare}>
+                    <Text style={styles.sendBtnText}>Bagikan ke {editors.length + viewers.length} Kontak</Text>
                     <MaterialIcons name="send" size={20} color="#FFF" />
                 </TouchableOpacity>
             </ActionBar>
@@ -399,7 +588,7 @@ const styles = StyleSheet.create({
     },
     contactName: {
         fontSize: 16,
-        fontWeight: '500',
+        fontWeight: '600',
     },
     contactEmail: {
         fontSize: 13,
@@ -410,6 +599,7 @@ const styles = StyleSheet.create({
         height: 24,
         borderRadius: 12,
         borderWidth: 1.5,
+        borderColor: 'rgba(0,0,0,0.1)',
         alignItems: 'center',
         justifyContent: 'center',
     },

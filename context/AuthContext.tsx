@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Session, User } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -10,6 +11,7 @@ WebBrowser.maybeCompleteAuthSession();
 interface AuthContextType {
     user: User | null;
     session: Session | null;
+    googleAccessToken: string | null;
     isLoading: boolean;
     signInWithGoogle: () => Promise<void>;
     signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
@@ -18,9 +20,12 @@ interface AuthContextType {
     resetPassword: (email: string) => Promise<{ error?: string }>;
 }
 
+const GOOGLE_TOKEN_KEY = 'kini_google_token';
+
 const AuthContext = createContext<AuthContextType>({
     user: null,
     session: null,
+    googleAccessToken: null,
     isLoading: true,
     signInWithGoogle: async () => { },
     signInWithEmail: async () => ({}),
@@ -32,6 +37,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
+    const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -40,6 +46,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSession(session);
             setUser(session?.user ?? null);
             setIsLoading(false);
+        });
+
+        // Load persisted Google Token
+        AsyncStorage.getItem(GOOGLE_TOKEN_KEY).then(token => {
+            if (token) setGoogleAccessToken(token);
         });
 
         // Listen for auth changes
@@ -81,6 +92,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         const params = new URLSearchParams(fragment);
                         const accessToken = params.get('access_token');
                         const refreshToken = params.get('refresh_token');
+                        const providerToken = params.get('provider_token');
+
+                        // Store Google provider token for Calendar API
+                        if (providerToken) {
+                            console.log('Got Google provider token');
+                            setGoogleAccessToken(providerToken);
+                            AsyncStorage.setItem(GOOGLE_TOKEN_KEY, providerToken);
+                        }
 
                         if (accessToken) {
                             await supabase.auth.setSession({
@@ -147,6 +166,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signOut = async () => {
         try {
             await supabase.auth.signOut();
+            await AsyncStorage.removeItem(GOOGLE_TOKEN_KEY);
+            setGoogleAccessToken(null);
         } catch (error: any) {
             console.error('Sign out error:', error);
         }
@@ -172,6 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         <AuthContext.Provider value={{
             user,
             session,
+            googleAccessToken,
             isLoading,
             signInWithGoogle,
             signInWithEmail,

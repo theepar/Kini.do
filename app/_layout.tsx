@@ -1,6 +1,7 @@
+import { Colors } from '@/constants/Colors';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DarkTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -18,31 +19,30 @@ export {
 SplashScreen.preventAutoHideAsync();
 
 // Custom dark theme matching the iOS design
+
 const KiniDarkTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: '#000000',
-    card: '#000000',
-    text: '#FFFFFF',
-    border: 'rgba(255, 255, 255, 0.1)',
-    primary: '#007AFF',
-    notification: '#007AFF',
+    background: Colors.dark.background,
+    card: Colors.dark.surface,
+    text: Colors.dark.text,
+    border: Colors.dark.border,
+    primary: Colors.dark.primary,
+    notification: Colors.dark.tint,
   },
 };
 
-// Light theme but with dark navigation background to prevent flash
 const KiniLightTheme = {
-  ...DarkTheme,
-  dark: false,
+  ...DefaultTheme,
   colors: {
-    ...DarkTheme.colors,
-    background: '#000000',
-    card: '#000000',
-    text: '#FFFFFF',
-    border: 'rgba(255, 255, 255, 0.1)',
-    primary: '#007AFF',
-    notification: '#007AFF',
+    ...DefaultTheme.colors,
+    background: Colors.light.background,
+    card: Colors.light.surface,
+    text: Colors.light.text,
+    border: Colors.light.border,
+    primary: Colors.light.primary,
+    notification: Colors.light.tint,
   },
 };
 
@@ -51,6 +51,8 @@ import { ThemeProvider as AppThemeProvider } from '@/context/ThemeContext';
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
+    'Inter': require('../assets/fonts/Inter-Reguler.ttf'),
+    'Inter-Regular': require('../assets/fonts/Inter-Reguler.ttf'),
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
@@ -99,12 +101,27 @@ import { AuthGate } from '@/components/AuthGate';
 import { AuthProvider } from '@/context/AuthContext';
 import { CalendarSyncProvider } from '@/context/CalendarSyncContext';
 import { LanguageProvider } from '@/context/LanguageContext';
-import { PreferencesProvider } from '@/context/PreferencesContext';
+import { PreferencesProvider, usePreferences } from '@/context/PreferencesContext';
 import { TaskProvider } from '@/context/TaskContext';
 import { supabase } from '@/lib/supabase';
 import { notifications } from '@/services/notifications';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
+
+function AppThemeWrapper({ children }: { children: React.ReactNode }) {
+  const { themeMode } = usePreferences();
+  const systemScheme = useColorScheme();
+
+  const theme = themeMode === 'system'
+    ? (systemScheme === 'dark' ? KiniDarkTheme : KiniLightTheme)
+    : (themeMode === 'dark' ? KiniDarkTheme : KiniLightTheme);
+
+  return (
+    <ThemeProvider value={theme}>
+      {children}
+    </ThemeProvider>
+  );
+}
 
 function RootLayoutNav({ showWelcome }: { showWelcome: boolean }) {
   const colorScheme = useColorScheme();
@@ -155,16 +172,16 @@ function RootLayoutNav({ showWelcome }: { showWelcome: boolean }) {
 
   return (
     <AuthProvider>
-      <CalendarSyncProvider>
-        <PreferencesProvider>
-          <LanguageProvider>
-            <TaskProvider>
-              <ThemeProvider value={KiniDarkTheme}>
+      <PreferencesProvider>
+        <TaskProvider>
+          <CalendarSyncProvider>
+            <LanguageProvider>
+              <AppThemeWrapper>
                 <AuthGate>
                   <Stack
                     screenOptions={{
                       headerShown: false,
-                      contentStyle: { backgroundColor: '#000000' },
+
                       animation: 'slide_from_bottom',
                       animationDuration: 280,
                       gestureEnabled: true,
@@ -206,7 +223,7 @@ function RootLayoutNav({ showWelcome }: { showWelcome: boolean }) {
                         headerShown: false,
                         animation: 'slide_from_bottom',
                         animationDuration: 280,
-                        contentStyle: { backgroundColor: '#000000' },
+
                         gestureEnabled: true,
                         gestureDirection: 'vertical',
                       }}
@@ -217,7 +234,7 @@ function RootLayoutNav({ showWelcome }: { showWelcome: boolean }) {
                         headerShown: false,
                         animation: 'slide_from_bottom',
                         animationDuration: 280,
-                        contentStyle: { backgroundColor: '#000000' },
+
                         gestureEnabled: true,
                         gestureDirection: 'vertical',
                       }}
@@ -228,7 +245,7 @@ function RootLayoutNav({ showWelcome }: { showWelcome: boolean }) {
                         headerShown: false,
                         animation: 'fade',
                         animationDuration: 300,
-                        contentStyle: { backgroundColor: '#000000' },
+
                       }}
                     />
                     <Stack.Screen
@@ -237,16 +254,16 @@ function RootLayoutNav({ showWelcome }: { showWelcome: boolean }) {
                         headerShown: false,
                         animation: 'fade',
                         animationDuration: 300,
-                        contentStyle: { backgroundColor: '#000000' },
+
                       }}
                     />
                   </Stack>
                 </AuthGate>
-              </ThemeProvider>
-            </TaskProvider>
-          </LanguageProvider>
-        </PreferencesProvider>
-      </CalendarSyncProvider>
+              </AppThemeWrapper>
+            </LanguageProvider>
+          </CalendarSyncProvider>
+        </TaskProvider>
+      </PreferencesProvider>
     </AuthProvider>
   );
 }

@@ -38,18 +38,18 @@ export const Palette = {
 export const Colors = {
   light: {
     // Text
-    text: Palette.black,
-    textSecondary: '#8E8E93',
+    text: '#111111',
+    textSecondary: '#86868B',
 
     // Backgrounds
-    background: Palette.gray100,
-    cardBackground: Palette.white,
-    surface: '#F9F9F9',
-    surfaceSecondary: Palette.gray200,
+    background: '#F6F7F8',
+    cardBackground: '#FFFFFF',
+    surface: '#FFFFFF',
+    surfaceSecondary: '#F8FAFC',
 
     // Accent
-    tint: Palette.blue,
-    primary: Palette.blue,
+    tint: '#13a4ec',
+    primary: '#13a4ec',
 
     // Icons
     icon: '#8E8E93',
@@ -69,6 +69,11 @@ export const Colors = {
     priorityLow: Palette.green,
     priorityMedium: Palette.orange,
     priorityHigh: Palette.red,
+
+    // Neutral / Skeleton
+    skeleton: '#E2E8F0',
+    tabInactive: '#94a3b8',
+    tabActive: '#000000',
   },
   dark: {
     // Text
@@ -78,17 +83,17 @@ export const Colors = {
     // Backgrounds
     background: Palette.black,
     cardBackground: Palette.gray800,
-    surface: '#2C2C2E',
+    surface: '#1C1C1E',
     surfaceSecondary: '#2C3A42',
 
     // Accent
-    tint: Palette.cyan,
-    primary: Palette.cyan,
+    tint: '#13a4ec',
+    primary: '#13a4ec',
 
     // Icons
     icon: '#94a3b8',
     tabIconDefault: '#94a3b8',
-    tabIconSelected: Palette.cyan,
+    tabIconSelected: '#13a4ec',
 
     // Borders
     border: 'rgba(255, 255, 255, 0.05)',
@@ -103,5 +108,39 @@ export const Colors = {
     priorityLow: Palette.greenDark,
     priorityMedium: Palette.orangeDark,
     priorityHigh: Palette.redDark,
+
+    // Neutral / Skeleton
+    skeleton: '#1e293b',
+    tabInactive: '#475569',
+    tabActive: '#FFFFFF',
   },
+};
+
+// Common UI Styles helper (Clean Code)
+export const UIStyles = {
+  getCardStyle: (isDark: boolean) => ({
+    backgroundColor: isDark ? Colors.dark.cardBackground : Colors.light.cardBackground,
+    borderColor: isDark ? Colors.dark.border : Colors.light.border,
+    borderWidth: 1,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.2 : 0.03,
+    shadowRadius: 10,
+    elevation: isDark ? 5 : 2,
+  }),
+  getShadow: (isDark: boolean) => ({
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.2 : 0.03,
+    shadowRadius: 10,
+    elevation: isDark ? 5 : 2,
+  }),
+};
+
+export const hexToRgba = (hex: string, alpha: number) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };

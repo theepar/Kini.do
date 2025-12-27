@@ -1,12 +1,14 @@
 import { MaterialIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
+    Image,
     ScrollView,
     StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View
+    View,
 } from 'react-native';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -16,6 +18,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useLanguage } from '@/context/LanguageContext';
+import { getWeekStartIndex, usePreferences } from '@/context/PreferencesContext';
 import { useTasks } from '@/context/TaskContext';
 
 export default function CalendarScreen() {
@@ -26,12 +29,11 @@ export default function CalendarScreen() {
     const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
     const { tasks, toggleTask } = useTasks();
     const { t, language } = useLanguage();
+    const { startWeekOn } = usePreferences();
     const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
-
-    // Date State
     const [selectedDate, setSelectedDate] = useState(new Date());
+    const weekStartIndex = getWeekStartIndex(startWeekOn);
 
-    // Handle task completion with animation delay
     const handleCompleteTask = (taskId: string) => {
         setCompletingTaskId(taskId);
         setTimeout(() => {
@@ -40,19 +42,37 @@ export default function CalendarScreen() {
         }, 300);
     };
 
-    // Generate days for current month
     const year = selectedDate.getFullYear();
     const month = selectedDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
 
-    const days = [];
-    for (let i = 0; i < firstDayOfMonth; i++) {
-        days.push(null); // Padding for start of month
+    const adjustedFirstDay = (firstDayOfMonth - weekStartIndex + 7) % 7;
+
+    const days: (Date | null)[] = [];
+    for (let i = 0; i < adjustedFirstDay; i++) {
+        days.push(null);
     }
     for (let i = 1; i <= daysInMonth; i++) {
         days.push(new Date(year, month, i));
     }
+
+    const getWeekDays = () => {
+        const result: Date[] = [];
+        const currentDay = selectedDate.getDay();
+        const diff = (currentDay - weekStartIndex + 7) % 7;
+        const weekStart = new Date(selectedDate);
+        weekStart.setDate(selectedDate.getDate() - diff);
+
+        for (let i = 0; i < 7; i++) {
+            const day = new Date(weekStart);
+            day.setDate(weekStart.getDate() + i);
+            result.push(day);
+        }
+        return result;
+    };
+
+    const weekDays = getWeekDays();
 
     const selectedDateString = selectedDate.toISOString().split('T')[0];
     const activeTasks = tasks.filter(t => t.date === selectedDateString && !t.isCompleted);
@@ -69,9 +89,14 @@ export default function CalendarScreen() {
 
     const monthNames = language === 'id' ? monthNamesId : monthNamesEn;
 
-    const dayNamesId = ['MIN', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB'];
-    const dayNamesEn = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-    const dayNames = language === 'id' ? dayNamesId : dayNamesEn;
+    const baseDayNamesId = ['MIN', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB'];
+    const baseDayNamesEn = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const baseDayNames = language === 'id' ? baseDayNamesId : baseDayNamesEn;
+
+    const dayNames = [
+        ...baseDayNames.slice(weekStartIndex),
+        ...baseDayNames.slice(0, weekStartIndex)
+    ];
 
     const changeMonth = (increment: number) => {
         const newDate = new Date(selectedDate);
@@ -79,17 +104,21 @@ export default function CalendarScreen() {
         setSelectedDate(newDate);
     };
 
+    const changeWeek = (increment: number) => {
+        const newDate = new Date(selectedDate);
+        newDate.setDate(newDate.getDate() + (increment * 7));
+        setSelectedDate(newDate);
+    };
+
     return (
-        <ThemedView style={styles.container} darkColor={colors.background}>
+        <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-            {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(255, 255, 255, 0.95)', borderBottomColor: colors.border }]}>
+            <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : colors.background, borderBottomColor: colors.border }]}>
                 <Text style={[styles.pageTitle, { color: colors.text }]}>{t('calendar')}</Text>
             </View>
 
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-                {/* Segmented Control */}
                 <View style={styles.segmentContainer}>
                     <View style={[styles.segment, { backgroundColor: isDark ? colors.cardBackground : '#E5E7EB' }]}>
                         <TouchableOpacity
@@ -107,33 +136,35 @@ export default function CalendarScreen() {
                     </View>
                 </View>
 
-                {/* Calendar View */}
                 <View style={[styles.calendarSection, { borderBottomColor: colors.border }]}>
                     <View style={styles.calendarHeader}>
-                        <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.arrowBtn}>
+                        <TouchableOpacity
+                            onPress={() => viewMode === 'week' ? changeWeek(-1) : changeMonth(-1)}
+                            style={styles.arrowBtn}
+                        >
                             <MaterialIcons name="chevron-left" size={24} color={colors.textSecondary} />
                         </TouchableOpacity>
                         <Text style={[styles.monthTitle, { color: colors.text }]}>{monthNames[month]} {year}</Text>
-                        <TouchableOpacity onPress={() => changeMonth(1)} style={styles.arrowBtn}>
+                        <TouchableOpacity
+                            onPress={() => viewMode === 'week' ? changeWeek(1) : changeMonth(1)}
+                            style={styles.arrowBtn}
+                        >
                             <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
 
-                    {/* Days Header */}
                     <View style={styles.daysHeader}>
                         {dayNames.map((day) => (
                             <Text key={day} style={styles.dayLabel}>{day}</Text>
                         ))}
                     </View>
 
-                    {/* Grid */}
                     <View style={styles.calendarGrid}>
-                        {days.map((day, i) => {
+                        {(viewMode === 'week' ? weekDays : days).map((day, i) => {
                             if (!day) return <View key={i} style={styles.dayCell} />;
 
                             const dayStr = day.toISOString().split('T')[0];
                             const isSelected = dayStr === selectedDateString;
-                            // Check if day has tasks
                             const hasTasks = tasks.some(t => t.date === dayStr && !t.isCompleted);
 
                             return (
@@ -177,12 +208,12 @@ export default function CalendarScreen() {
                         activeTasks.map((task) => {
                             const isCompleting = completingTaskId === task.id;
                             return (
-                                <View 
-                                    key={task.id} 
+                                <View
+                                    key={task.id}
                                     style={[
-                                        styles.taskCardNew, 
-                                        { 
-                                            backgroundColor: isDark ? colors.cardBackground : '#FFF', 
+                                        styles.taskCardNew,
+                                        {
+                                            backgroundColor: isDark ? colors.cardBackground : '#FFF',
                                             borderLeftColor: task.tagColor ?? '#3B82F6',
                                             opacity: isCompleting ? 0.5 : 1,
                                         }
@@ -190,8 +221,8 @@ export default function CalendarScreen() {
                                 >
                                     <TouchableOpacity
                                         style={[
-                                            styles.checkboxNew, 
-                                            { 
+                                            styles.checkboxNew,
+                                            {
                                                 borderColor: isCompleting ? '#007AFF' : (isDark ? '#6B7280' : '#D1D5DB'),
                                                 backgroundColor: isCompleting ? '#007AFF' : 'transparent',
                                                 alignItems: 'center',
@@ -203,23 +234,44 @@ export default function CalendarScreen() {
                                     >
                                         {isCompleting && <MaterialIcons name="check" size={16} color="#FFF" />}
                                     </TouchableOpacity>
-                                    <View style={styles.taskContentNew}>
+                                    <TouchableOpacity
+                                        style={styles.taskContentNew}
+                                        onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
+                                    >
                                         <Text style={[
-                                            styles.taskTitleNew, 
-                                            { 
+                                            styles.taskTitleNew,
+                                            {
                                                 color: colors.text,
                                                 textDecorationLine: isCompleting ? 'line-through' : 'none',
                                             }
                                         ]}>{task.title}</Text>
                                         <View style={styles.metaRowNew}>
                                             {task.tag && (
-                                                <View style={[styles.tagNew, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6', marginRight: 8 }]}>
+                                                <View style={[styles.tagNew, { backgroundColor: colors.surfaceSecondary, marginRight: 8 }]}>
                                                     <Text style={[styles.tagTextNew, { color: colors.text }]}>{task.tag}</Text>
                                                 </View>
                                             )}
                                             <Text style={[styles.metaTextNew, { color: colors.textSecondary }]}>{task.time || t('allDay')}</Text>
                                         </View>
-                                    </View>
+                                        {((task.sharedWith && task.sharedWith.length > 0)) && (
+                                            <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                                                {(task.sharedWith).slice(0, 3).map((email, i) => (
+                                                    <Image
+                                                        key={i}
+                                                        source={{ uri: `https://ui-avatars.com/api/?name=${email}&background=random&color=fff` }}
+                                                        style={{
+                                                            width: 20,
+                                                            height: 20,
+                                                            borderRadius: 10,
+                                                            marginLeft: i > 0 ? -6 : 0,
+                                                            borderWidth: 1.5,
+                                                            borderColor: colors.cardBackground,
+                                                        }}
+                                                    />
+                                                ))}
+                                            </View>
+                                        )}
+                                    </TouchableOpacity>
                                 </View>
                             );
                         })
@@ -273,6 +325,7 @@ const styles = StyleSheet.create({
         fontSize: 28,
         fontWeight: 'bold',
         letterSpacing: -0.5,
+        fontFamily: 'Inter',
     },
     content: {
         paddingBottom: 24,
@@ -297,6 +350,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         letterSpacing: 0.5,
+        fontFamily: 'Inter',
     },
     calendarSection: {
         paddingHorizontal: 12,
@@ -313,6 +367,7 @@ const styles = StyleSheet.create({
     monthTitle: {
         fontSize: 18,
         fontWeight: '700',
+        fontFamily: 'Inter',
     },
     arrowBtn: {
         padding: 8,
@@ -328,6 +383,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#94a3b8',
         textTransform: 'uppercase',
+        fontFamily: 'Inter',
     },
     calendarGrid: {
         flexDirection: 'row',
@@ -344,6 +400,7 @@ const styles = StyleSheet.create({
     dayText: {
         fontSize: 14,
         fontWeight: '500',
+        fontFamily: 'Inter',
     },
     selectedDay: {
         shadowOffset: { width: 0, height: 0 },
@@ -378,10 +435,12 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: 'bold',
         letterSpacing: 0.5,
+        fontFamily: 'Inter',
     },
     todayTitle: {
         fontSize: 18,
         fontWeight: '700',
+        fontFamily: 'Inter',
     },
     badge: {
         paddingHorizontal: 8,
@@ -391,6 +450,7 @@ const styles = StyleSheet.create({
     badgeText: {
         fontSize: 12,
         fontWeight: '500',
+        fontFamily: 'Inter',
     },
     taskCard: {
         flexDirection: 'row',
@@ -417,19 +477,23 @@ const styles = StyleSheet.create({
     priorityTagText: {
         fontSize: 12,
         fontWeight: '600',
+        fontFamily: 'Inter',
     },
     taskTime: {
         fontSize: 12,
         color: '#94a3b8',
+        fontFamily: 'Inter',
     },
     taskTitle: {
         fontSize: 16,
         fontWeight: '600',
         marginBottom: 2,
+        fontFamily: 'Inter',
     },
     taskSubtitle: {
         fontSize: 14,
         color: '#94a3b8',
+        fontFamily: 'Inter',
     },
     taskIcon: {
         width: 48,
@@ -442,6 +506,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         marginBottom: 4,
+        fontFamily: 'Inter',
     },
     checkbox: {
         width: 24,
@@ -493,6 +558,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '700',
         marginBottom: 6,
+        fontFamily: 'Inter',
     },
     metaRowNew: {
         flexDirection: 'row',
@@ -506,11 +572,13 @@ const styles = StyleSheet.create({
     metaTextNew: {
         fontSize: 12,
         fontWeight: '500',
+        fontFamily: 'Inter',
     },
     dotSeparator: {
         marginHorizontal: 6,
         color: '#94a3b8',
         fontSize: 10,
+        fontFamily: 'Inter',
     },
     tagNew: {
         paddingHorizontal: 8,
@@ -520,6 +588,7 @@ const styles = StyleSheet.create({
     tagTextNew: {
         fontSize: 11,
         fontWeight: '700',
+        fontFamily: 'Inter',
     },
     avatarStack: {
         flexDirection: 'row',

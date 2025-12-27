@@ -1,9 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import { v4 as uuidv4 } from 'uuid';
 
-import { googleCalendar } from '@/services/googleCalendar';
+import { CalendarEvent, googleCalendar } from '@/services/googleCalendar';
 import { useAuth } from './AuthContext';
+import { Task, useTasks } from './TaskContext';
 
 interface CalendarSyncContextType {
     isSyncing: boolean;
@@ -22,7 +24,8 @@ const LAST_SYNC_KEY = '@calendar_last_sync';
 const SYNC_INTERVAL_MS = 60 * 1000; // 1 minute
 
 export function CalendarSyncProvider({ children }: { children: React.ReactNode }) {
-    const { session } = useAuth();
+    const { session, googleAccessToken } = useAuth();
+    const { tasks, addTask, updateTask } = useTasks();
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
     const [syncError, setSyncError] = useState<string | null>(null);
@@ -103,7 +106,27 @@ export function CalendarSyncProvider({ children }: { children: React.ReactNode }
     };
 
     const getAccessToken = (): string | null => {
-        return session?.access_token || null;
+        // Use Google provider token for Calendar API, not Supabase token
+        return googleAccessToken || null;
+    };
+
+    // Helper to map Google Event to Task
+    const mapEventToTask = (event: CalendarEvent): Partial<Task> => {
+        const startDate = new Date(event.start.dateTime);
+        const dateStr = startDate.toISOString().split('T')[0];
+        const timeStr = startDate.getHours().toString().padStart(2, '0') + ':' +
+            startDate.getMinutes().toString().padStart(2, '0');
+
+        return {
+            title: event.summary,
+            description: event.description || '',
+            date: dateStr,
+            time: timeStr,
+            googleCalendarEventId: event.id,
+            syncToGoogle: true,
+            priority: 'medium', // Default priority for calendar events
+            isCompleted: false,
+        };
     };
 
     // Internal sync function
@@ -123,6 +146,30 @@ export function CalendarSyncProvider({ children }: { children: React.ReactNode }
         try {
             const events = await googleCalendar.getUpcomingEvents(accessToken, 50);
             console.log(`Fetched ${events.length} events from Google Calendar`);
+
+            // Integrate events into TaskContext
+            for (const event of events) {
+                const mappedTask = mapEventToTask(event);
+                const existingTask = tasks.find(t => t.googleCalendarEventId === event.id);
+
+                if (existingTask) {
+                    // Check if anything changed before updating to avoid loops
+                    if (existingTask.title !== mappedTask.title ||
+                        existingTask.date !== mappedTask.date ||
+                        existingTask.time !== mappedTask.time) {
+                        updateTask(existingTask.id, mappedTask);
+                    }
+                } else {
+                    // Create as new task
+                    const newTask: Task = {
+                        ...(mappedTask as Task),
+                        id: uuidv4(),
+                        ownerId: session?.user?.id,
+                    };
+                    addTask(newTask);
+                }
+            }
+
             await updateLastSyncTime();
         } catch (error: any) {
             // Silently handle auth errors - happens when Google OAuth isn't fully configured
@@ -160,7 +207,7 @@ export function CalendarSyncProvider({ children }: { children: React.ReactNode }
             return;
         }
         await performSync();
-    }, [autoSyncEnabled, session]);
+    }, [autoSyncEnabled, session, tasks]);
 
     const syncTask = useCallback(async (
         taskId: string,

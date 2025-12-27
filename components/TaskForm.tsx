@@ -220,6 +220,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         padding: 14,
         fontSize: 16,
+        fontFamily: 'Inter',
     },
     textArea: {
         minHeight: 80,
