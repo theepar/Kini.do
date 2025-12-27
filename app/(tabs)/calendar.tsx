@@ -15,6 +15,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useLanguage } from '@/context/LanguageContext';
 import { useTasks } from '@/context/TaskContext';
 
 export default function CalendarScreen() {
@@ -24,9 +25,20 @@ export default function CalendarScreen() {
     const colors = Colors[colorScheme];
     const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
     const { tasks, toggleTask } = useTasks();
+    const { t, language } = useLanguage();
+    const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
 
     // Date State
     const [selectedDate, setSelectedDate] = useState(new Date());
+
+    // Handle task completion with animation delay
+    const handleCompleteTask = (taskId: string) => {
+        setCompletingTaskId(taskId);
+        setTimeout(() => {
+            toggleTask(taskId);
+            setCompletingTaskId(null);
+        }, 300);
+    };
 
     // Generate days for current month
     const year = selectedDate.getFullYear();
@@ -45,10 +57,21 @@ export default function CalendarScreen() {
     const selectedDateString = selectedDate.toISOString().split('T')[0];
     const activeTasks = tasks.filter(t => t.date === selectedDateString && !t.isCompleted);
 
-    const monthNames = [
+    const monthNamesId = [
         'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
         'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
+
+    const monthNamesEn = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const monthNames = language === 'id' ? monthNamesId : monthNamesEn;
+
+    const dayNamesId = ['MIN', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB'];
+    const dayNamesEn = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const dayNames = language === 'id' ? dayNamesId : dayNamesEn;
 
     const changeMonth = (increment: number) => {
         const newDate = new Date(selectedDate);
@@ -62,7 +85,7 @@ export default function CalendarScreen() {
 
             {/* Header */}
             <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(255, 255, 255, 0.95)', borderBottomColor: colors.border }]}>
-                <Text style={[styles.pageTitle, { color: colors.text }]}>Kalender</Text>
+                <Text style={[styles.pageTitle, { color: colors.text }]}>{t('calendar')}</Text>
             </View>
 
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -73,13 +96,13 @@ export default function CalendarScreen() {
                             style={[styles.segmentBtn, viewMode === 'month' && { backgroundColor: isDark ? '#2C3A42' : '#FFF', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2 }]}
                             onPress={() => setViewMode('month')}
                         >
-                            <Text style={[styles.segmentText, { color: viewMode === 'month' ? colors.tint : colors.textSecondary }]}>BULAN</Text>
+                            <Text style={[styles.segmentText, { color: viewMode === 'month' ? colors.tint : colors.textSecondary }]}>{t('month')}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.segmentBtn, viewMode === 'week' && { backgroundColor: isDark ? '#2C3A42' : '#FFF', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2 }]}
                             onPress={() => setViewMode('week')}
                         >
-                            <Text style={[styles.segmentText, { color: viewMode === 'week' ? colors.tint : colors.textSecondary }]}>MINGGU</Text>
+                            <Text style={[styles.segmentText, { color: viewMode === 'week' ? colors.tint : colors.textSecondary }]}>{t('week')}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -98,7 +121,7 @@ export default function CalendarScreen() {
 
                     {/* Days Header */}
                     <View style={styles.daysHeader}>
-                        {['MIN', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB'].map((day) => (
+                        {dayNames.map((day) => (
                             <Text key={day} style={styles.dayLabel}>{day}</Text>
                         ))}
                     </View>
@@ -149,27 +172,57 @@ export default function CalendarScreen() {
                     </View>
 
                     {activeTasks.length === 0 ? (
-                        <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>Tidak ada tugas untuk tanggal ini.</Text>
+                        <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>{t('noTasksForDate')}</Text>
                     ) : (
-                        activeTasks.map((task) => (
-                            <View key={task.id} style={[styles.taskCardNew, { backgroundColor: isDark ? colors.cardBackground : '#FFF', borderLeftColor: task.tagColor ?? '#3B82F6' }]}>
-                                <TouchableOpacity
-                                    style={[styles.checkboxNew, { borderColor: isDark ? '#6B7280' : '#D1D5DB' }]}
-                                    onPress={() => toggleTask(task.id)}
-                                />
-                                <View style={styles.taskContentNew}>
-                                    <Text style={[styles.taskTitleNew, { color: colors.text }]}>{task.title}</Text>
-                                    <View style={styles.metaRowNew}>
-                                        {task.tag && (
-                                            <View style={[styles.tagNew, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6', marginRight: 8 }]}>
-                                                <Text style={[styles.tagTextNew, { color: colors.text }]}>{task.tag}</Text>
-                                            </View>
-                                        )}
-                                        <Text style={[styles.metaTextNew, { color: colors.textSecondary }]}>{task.time || 'All Day'}</Text>
+                        activeTasks.map((task) => {
+                            const isCompleting = completingTaskId === task.id;
+                            return (
+                                <View 
+                                    key={task.id} 
+                                    style={[
+                                        styles.taskCardNew, 
+                                        { 
+                                            backgroundColor: isDark ? colors.cardBackground : '#FFF', 
+                                            borderLeftColor: task.tagColor ?? '#3B82F6',
+                                            opacity: isCompleting ? 0.5 : 1,
+                                        }
+                                    ]}
+                                >
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.checkboxNew, 
+                                            { 
+                                                borderColor: isCompleting ? '#007AFF' : (isDark ? '#6B7280' : '#D1D5DB'),
+                                                backgroundColor: isCompleting ? '#007AFF' : 'transparent',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }
+                                        ]}
+                                        onPress={() => handleCompleteTask(task.id)}
+                                        disabled={isCompleting}
+                                    >
+                                        {isCompleting && <MaterialIcons name="check" size={16} color="#FFF" />}
+                                    </TouchableOpacity>
+                                    <View style={styles.taskContentNew}>
+                                        <Text style={[
+                                            styles.taskTitleNew, 
+                                            { 
+                                                color: colors.text,
+                                                textDecorationLine: isCompleting ? 'line-through' : 'none',
+                                            }
+                                        ]}>{task.title}</Text>
+                                        <View style={styles.metaRowNew}>
+                                            {task.tag && (
+                                                <View style={[styles.tagNew, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6', marginRight: 8 }]}>
+                                                    <Text style={[styles.tagTextNew, { color: colors.text }]}>{task.tag}</Text>
+                                                </View>
+                                            )}
+                                            <Text style={[styles.metaTextNew, { color: colors.textSecondary }]}>{task.time || t('allDay')}</Text>
+                                        </View>
                                     </View>
                                 </View>
-                            </View>
-                        ))
+                            );
+                        })
                     )}
                 </View>
 
@@ -184,7 +237,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     header: {
-        paddingBottom: 8,
+        paddingBottom: 16,
         paddingHorizontal: 20,
         borderBottomWidth: 1,
     },
@@ -219,7 +272,7 @@ const styles = StyleSheet.create({
     pageTitle: {
         fontSize: 28,
         fontWeight: 'bold',
-        marginTop: 8,
+        letterSpacing: -0.5,
     },
     content: {
         paddingBottom: 24,

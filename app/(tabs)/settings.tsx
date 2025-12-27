@@ -2,10 +2,14 @@ import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -15,16 +19,35 @@ import {
   View
 } from 'react-native';
 
+import { useAuth } from '@/context/AuthContext';
+import { useCalendarSync } from '@/context/CalendarSyncContext';
+import { Language, languageNames, supportedLanguages, useLanguage } from '@/context/LanguageContext';
+import { StartWeekDay, getStartWeekDayName, usePreferences } from '@/context/PreferencesContext';
+import { useTasks } from '@/context/TaskContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { theme, toggleTheme } = useTheme();
+  const { language, setLanguage, t, languageName, isTranslating } = useLanguage();
+  const { resetTasks } = useTasks();
+  const { signOut, user } = useAuth();
+  const { autoSyncEnabled, setAutoSyncEnabled, lastSyncTime, isSyncing, syncNow } = useCalendarSync();
+  const {
+    startWeekOn, setStartWeekOn,
+    notificationsEnabled, setNotificationsEnabled,
+    deadlineReminders, setDeadlineReminders,
+    dailyDigest, setDailyDigest
+  } = usePreferences();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'dark';
   const isDark = colorScheme === 'dark';
   const colors = Colors[colorScheme];
+
+  // State for modals
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [showWeekStartModal, setShowWeekStartModal] = useState(false);
 
   // Specific colors from design
   const bgLight = '#f6f7f8';
@@ -37,17 +60,35 @@ export default function SettingsScreen() {
   const textGrayDark = '#9db0b9';
   const textGrayLight = '#64748b'; // slate-500
 
-  // State for toggles
-  const [syncEnabled, setSyncEnabled] = useState(true);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [deadlinesEnabled, setDeadlinesEnabled] = useState(true);
-  const [dailyDigestEnabled, setDailyDigestEnabled] = useState(false);
+
+  // Format last sync time
+  const formatLastSync = () => {
+    if (!lastSyncTime) return 'Belum pernah sync';
+    const now = new Date();
+    const diff = now.getTime() - lastSyncTime.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+
+    if (minutes < 1) return 'Baru saja';
+    if (minutes < 60) return `${minutes} menit lalu`;
+    if (hours < 24) return `${hours} jam lalu`;
+    return lastSyncTime.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  };
 
   const backgroundColor = isDark ? bgDark : bgLight;
   const surfaceColor = isDark ? surfaceDark : surfaceLight;
   const textColor = isDark ? textDark : textLight;
   const subtextColor = isDark ? textGrayDark : textGrayLight;
   const borderColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+
+  const handleSelectLanguage = async (lang: Language) => {
+    if (lang === language) {
+      setShowLanguageModal(false);
+      return;
+    }
+    await setLanguage(lang);
+    setShowLanguageModal(false);
+  };
 
   const renderSectionHeader = (title: string) => (
     <Text style={[styles.sectionHeader, { color: subtextColor }]}>
@@ -119,7 +160,7 @@ export default function SettingsScreen() {
 
       {/* Top App Bar */}
       <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(246, 247, 248, 0.95)', borderBottomColor: borderColor }]}>
-        <Text style={[styles.pageTitle, { color: textColor }]}>Pengaturan</Text>
+        <Text style={[styles.pageTitle, { color: textColor }]}>{t('settings')}</Text>
       </View>
 
       <ScrollView
@@ -131,7 +172,7 @@ export default function SettingsScreen() {
           <View style={[styles.profileCard, { backgroundColor: surfaceColor, borderColor }]}>
             <View style={styles.avatarContainer}>
               <Image
-                source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBPEMCAC4u3w2aVJap5clT0f7Erv724Y_DTsTjghul7rXCcdKZoNweBW1qd_8_GmodJMQm1RwHw6DnfZPO7jj_tPzz1R8P54q79IluNRSLJXGerD_M--PxTxEoi_aqiK6ZQO2e_TSaw6THmlTll46hiK_CK3w1wvy2Dmh1HHYSjkmpXjgzFh66hKwusyJ2NXDjXVztBoDru8c9vUWdCIrceGwCIb7arpkKPtOZofii2XxqDlIy3OWy9L05nC3pnQTYPTAk3f6hyHSE" }}
+                source={{ uri: user?.user_metadata?.avatar_url || "https://ui-avatars.com/api/?name=" + encodeURIComponent(user?.user_metadata?.display_name || user?.email || 'User') + "&background=007AFF&color=fff" }}
                 style={styles.avatar}
               />
               <View style={[styles.verifiedBadge, { backgroundColor: primary, borderColor: surfaceColor }]}>
@@ -139,50 +180,62 @@ export default function SettingsScreen() {
               </View>
             </View>
             <View style={styles.profileInfo}>
-              <Text style={[styles.profileName, { color: textColor }]}>Deva Gundhala</Text>
-              <Text style={[styles.profileEmail, { color: subtextColor }]}>devaunow@gmail.com</Text>
-              <View style={styles.syncStatus}>
-                <MaterialIcons name="sync" size={14} color={primary} />
-                <Text style={[styles.syncText, { color: subtextColor }]}>Sinkron: Baru saja</Text>
-              </View>
+              <Text style={[styles.profileName, { color: textColor }]}>{user?.user_metadata?.display_name || user?.user_metadata?.full_name || 'User'}</Text>
+              <Text style={[styles.profileEmail, { color: subtextColor }]}>{user?.email || ''}</Text>
+              <TouchableOpacity
+                style={styles.syncStatus}
+                onPress={syncNow}
+                disabled={isSyncing || !autoSyncEnabled}
+              >
+                <MaterialIcons
+                  name={isSyncing ? 'sync' : 'sync'}
+                  size={14}
+                  color={autoSyncEnabled ? primary : subtextColor}
+                  style={isSyncing ? { transform: [{ rotate: '45deg' }] } : undefined}
+                />
+                <Text style={[styles.syncText, { color: subtextColor }]}>
+                  {autoSyncEnabled ? (isSyncing ? 'Menyinkronkan...' : `Sinkron: ${formatLastSync()}`) : 'Sync nonaktif'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
 
         {/* Akun & Sinkronisasi */}
         <View style={styles.section}>
-          {renderSectionHeader('AKUN & SINKRONISASI')}
+          {renderSectionHeader(t('accountSync'))}
           <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
             {renderMenuItem({
               icon: 'account-circle',
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
-              title: 'Akun Google',
-              subtitle: 'Terhubung sebagai Deva',
-              value: 'Kelola',
+              title: t('googleAccount'),
+              subtitle: `${t('connectedAs')} Deva`,
+              value: t('manage'),
             })}
             <View style={[styles.separator, { backgroundColor: borderColor }]} />
             {renderMenuItem({
               icon: 'cloud-sync',
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
-              title: 'Sinkronisasi Otomatis',
+              title: t('autoSync'),
+              subtitle: autoSyncEnabled ? `Terakhir sync: ${formatLastSync()}` : 'Sync tidak aktif',
               isToggle: true,
-              toggleValue: syncEnabled,
-              onToggle: setSyncEnabled
+              toggleValue: autoSyncEnabled,
+              onToggle: setAutoSyncEnabled
             })}
           </View>
         </View>
 
         {/* Notifikasi */}
         <View style={styles.section}>
-          {renderSectionHeader('NOTIFIKASI')}
+          {renderSectionHeader(t('notifications'))}
           <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
             {renderMenuItem({
               icon: 'notifications',
               iconColor: '#FFF',
               iconBg: '#EF4444',
-              title: 'Izinkan Notifikasi',
+              title: t('allowNotifications'),
               isToggle: true,
               toggleValue: notificationsEnabled,
               onToggle: setNotificationsEnabled
@@ -192,34 +245,34 @@ export default function SettingsScreen() {
               icon: 'timer',
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
-              title: 'Tenggat Waktu',
+              title: t('deadlines'),
               isToggle: true,
-              toggleValue: deadlinesEnabled,
-              onToggle: setDeadlinesEnabled
+              toggleValue: deadlineReminders,
+              onToggle: setDeadlineReminders
             })}
             <View style={[styles.separator, { backgroundColor: borderColor }]} />
             {renderMenuItem({
-              icon: 'forward-to-inbox', // Note: MaterialIcons might call this differently or not exist, using 'inbox' fallback or similar if needed. 'move-to-inbox' is close. Using 'forward-to-inbox' usually works in React Native Vector Icons if updated.
+              icon: 'forward-to-inbox',
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
-              title: 'Ringkasan Harian',
+              title: t('dailyDigest'),
               isToggle: true,
-              toggleValue: dailyDigestEnabled,
-              onToggle: setDailyDigestEnabled
+              toggleValue: dailyDigest,
+              onToggle: setDailyDigest
             })}
           </View>
         </View>
 
         {/* Umum */}
         <View style={styles.section}>
-          {renderSectionHeader('UMUM')}
+          {renderSectionHeader(t('general'))}
           <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
 
             {renderMenuItem({
               icon: 'dark-mode',
               iconColor: '#FFF',
               iconBg: '#334155',
-              title: 'Mode Gelap',
+              title: t('darkMode'),
               isToggle: true,
               toggleValue: theme === 'dark',
               onToggle: () => toggleTheme(),
@@ -229,53 +282,236 @@ export default function SettingsScreen() {
               icon: 'language',
               iconColor: '#FFF',
               iconBg: '#3B82F6',
-              title: 'Bahasa',
-              value: 'Indonesia',
+              title: t('language'),
+              value: languageName,
+              onPress: () => setShowLanguageModal(true),
             })}
             <View style={[styles.separator, { backgroundColor: borderColor }]} />
             {renderMenuItem({
               icon: 'calendar-today',
               iconColor: '#FFF',
               iconBg: '#22C55E',
-              title: 'Mulai Minggu Pada',
-              value: 'Senin',
+              title: t('startWeekOn'),
+              value: getStartWeekDayName(startWeekOn, t),
+              onPress: () => setShowWeekStartModal(true),
             })}
           </View>
         </View>
 
         {/* Dukungan */}
         <View style={styles.section}>
-          {renderSectionHeader('DUKUNGAN')}
+          {renderSectionHeader(t('support'))}
           <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
             {renderMenuItem({
               icon: 'help',
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
-              title: 'Bantuan & FAQ',
+              title: t('helpFaq'),
             })}
             <View style={[styles.separator, { backgroundColor: borderColor }]} />
             {renderMenuItem({
               icon: 'security',
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
-              title: 'Kebijakan Privasi',
+              title: t('privacyPolicy'),
+            })}
+          </View>
+        </View>
+
+        {/* Data */}
+        <View style={styles.section}>
+          {renderSectionHeader(t('data'))}
+          <View style={[styles.menuGroup, { backgroundColor: surfaceColor, borderColor }]}>
+            {renderMenuItem({
+              icon: 'refresh',
+              iconColor: '#FFF',
+              iconBg: '#F59E0B',
+              title: t('resetTasks'),
+              subtitle: t('resetTasksSubtitle'),
+              hasArrow: true,
+              onPress: () => {
+                Alert.alert(
+                  t('resetConfirmTitle'),
+                  t('resetConfirmMessage'),
+                  [
+                    { text: t('cancel'), style: 'cancel' },
+                    {
+                      text: t('reset'),
+                      style: 'destructive',
+                      onPress: () => {
+                        resetTasks();
+                        Alert.alert(t('success'), t('resetSuccessMessage'));
+                      }
+                    },
+                  ]
+                );
+              },
+            })}
+            <View style={[styles.separator, { backgroundColor: borderColor }]} />
+            {renderMenuItem({
+              icon: 'celebration',
+              iconColor: '#FFF',
+              iconBg: '#8B5CF6',
+              title: 'Reset Welcome Screen',
+              subtitle: 'Tampilkan welcome screen lagi',
+              hasArrow: true,
+              onPress: async () => {
+                await AsyncStorage.removeItem('hasSeenWelcome');
+                Alert.alert('Berhasil', 'Welcome screen akan muncul saat restart app');
+              },
             })}
           </View>
         </View>
 
         {/* Footer */}
         <View style={styles.footer}>
-          <TouchableOpacity style={[styles.logoutBtn, { backgroundColor: surfaceColor, borderColor }]}>
-            <Text style={styles.logoutText}>Keluar</Text>
+          <TouchableOpacity
+            style={[styles.logoutBtn, { backgroundColor: surfaceColor, borderColor }]}
+            onPress={() => {
+              Alert.alert(
+                t('logout'),
+                'Apakah Anda yakin ingin keluar?',
+                [
+                  { text: t('cancel'), style: 'cancel' },
+                  {
+                    text: t('logout'),
+                    style: 'destructive',
+                    onPress: async () => {
+                      await signOut();
+                    }
+                  },
+                ]
+              );
+            }}
+          >
+            <Text style={styles.logoutText}>{t('logout')}</Text>
           </TouchableOpacity>
 
           <View style={styles.versionInfo}>
-            <Text style={[styles.versionText, { color: subtextColor }]}>Kini.do Versi 1.0.0</Text>
+            <Text style={[styles.versionText, { color: subtextColor }]}>{t('version')} 1.0.0</Text>
           </View>
         </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* Language Selection Modal */}
+      <Modal
+        visible={showLanguageModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isTranslating && setShowLanguageModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => !isTranslating && setShowLanguageModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: surfaceColor }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>{t('selectLanguage')}</Text>
+              {!isTranslating && (
+                <TouchableOpacity onPress={() => setShowLanguageModal(false)}>
+                  <MaterialIcons name="close" size={24} color={subtextColor} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Loading indicator when translating (only after selecting) */}
+            {isTranslating ? (
+              <View style={styles.translatingContainer}>
+                <ActivityIndicator size="large" color="#3B82F6" />
+                <Text style={[styles.translatingText, { color: textColor, marginTop: 12 }]}>{t('translating')}</Text>
+                <Text style={[styles.translatingSubText, { color: subtextColor }]}>Please wait...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.languageList} showsVerticalScrollIndicator={false}>
+                {supportedLanguages.map((lang, index) => {
+                  const langInfo = languageNames[lang];
+                  return (
+                    <React.Fragment key={lang}>
+                      <TouchableOpacity
+                        style={[
+                          styles.languageOption,
+                          language === lang && { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF' }
+                        ]}
+                        onPress={() => handleSelectLanguage(lang)}
+                      >
+                        <View style={styles.languageInfo}>
+                          <View style={[styles.languageIcon, { backgroundColor: language === lang ? colors.primary : (isDark ? colors.surface : colors.surfaceSecondary) }]}>
+                            <MaterialIcons name="language" size={20} color={language === lang ? '#FFF' : colors.textSecondary} />
+                          </View>
+                          <View>
+                            <Text style={[styles.languageLabel, { color: textColor }]}>{langInfo.nativeName}</Text>
+                            <Text style={[styles.languageSub, { color: subtextColor }]}>{langInfo.englishName}</Text>
+                          </View>
+                        </View>
+                        {language === lang && (
+                          <MaterialIcons name="check-circle" size={24} color="#3B82F6" />
+                        )}
+                      </TouchableOpacity>
+                      {index < supportedLanguages.length - 1 && (
+                        <View style={[styles.modalSeparator, { backgroundColor: borderColor }]} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Week Start Selection Modal */}
+      <Modal
+        visible={showWeekStartModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowWeekStartModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowWeekStartModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: surfaceColor }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>{t('startWeekOn')}</Text>
+              <TouchableOpacity onPress={() => setShowWeekStartModal(false)}>
+                <MaterialIcons name="close" size={24} color={subtextColor} />
+              </TouchableOpacity>
+            </View>
+
+            {(['sunday', 'monday', 'saturday'] as StartWeekDay[]).map((day, index) => (
+              <React.Fragment key={day}>
+                <TouchableOpacity
+                  style={[
+                    styles.languageOption,
+                    startWeekOn === day && { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF' }
+                  ]}
+                  onPress={() => {
+                    setStartWeekOn(day);
+                    setShowWeekStartModal(false);
+                  }}
+                >
+                  <View style={styles.languageInfo}>
+                    <View style={[styles.languageIcon, { backgroundColor: startWeekOn === day ? '#22C55E' : (isDark ? colors.surface : colors.surfaceSecondary) }]}>
+                      <MaterialIcons name="calendar-today" size={20} color={startWeekOn === day ? '#FFF' : colors.textSecondary} />
+                    </View>
+                    <Text style={[styles.languageLabel, { color: textColor }]}>{t(day as any)}</Text>
+                  </View>
+                  {startWeekOn === day && (
+                    <MaterialIcons name="check-circle" size={24} color="#22C55E" />
+                  )}
+                </TouchableOpacity>
+                {index < 2 && (
+                  <View style={[styles.modalSeparator, { backgroundColor: borderColor }]} />
+                )}
+              </React.Fragment>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ThemedView>
   );
 }
@@ -444,5 +680,82 @@ const styles = StyleSheet.create({
   },
   versionText: {
     fontSize: 12,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  languageInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  languageIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  languageLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  languageSub: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  modalSeparator: {
+    height: 1,
+    marginVertical: 4,
+  },
+  translatingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  translatingText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  translatingSubText: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  languageList: {
+    maxHeight: 400,
   },
 });

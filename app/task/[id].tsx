@@ -1,21 +1,24 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Image,
+    Modal,
     ScrollView,
     StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 
+import { ActionBar } from '@/components/ActionBar';
 import { ThemedView } from '@/components/ThemedView';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useLanguage } from '@/context/LanguageContext';
 import { useTasks } from '@/context/TaskContext';
 
 export default function TaskDetailScreen() {
@@ -23,7 +26,19 @@ export default function TaskDetailScreen() {
     const { id } = useLocalSearchParams();
     const colorScheme = useColorScheme() ?? 'dark';
     const isDark = colorScheme === 'dark';
-    const { tasks, toggleTask } = useTasks();
+    const { tasks, toggleTask, getCategoryById, deleteTask } = useTasks();
+    const { t } = useLanguage();
+    const [showMenu, setShowMenu] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+    // Get category display helper
+    const getCategoryDisplay = (categoryId?: string) => {
+        if (!categoryId) return null;
+        const category = getCategoryById(categoryId);
+        if (!category) return null;
+        const displayName = category.isDefault ? t(category.name as any) : category.name;
+        return { name: displayName, color: category.color };
+    };
 
     // Find Task
     const task = tasks.find(t => t.id === id);
@@ -31,9 +46,9 @@ export default function TaskDetailScreen() {
     if (!task) {
         return (
             <ThemedView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]} darkColor="#000000">
-                <Text style={{ color: isDark ? '#FFF' : '#000' }}>Tugas tidak ditemukan</Text>
+                <Text style={{ color: isDark ? '#FFF' : '#000' }}>{t('taskNotFound')}</Text>
                 <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
-                    <Text style={{ color: '#007AFF' }}>Kembali</Text>
+                    <Text style={{ color: '#007AFF' }}>{t('back')}</Text>
                 </TouchableOpacity>
             </ThemedView>
         );
@@ -44,15 +59,15 @@ export default function TaskDetailScreen() {
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
             {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+            <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)' }]}>
                 <TouchableOpacity
                     style={styles.headerBtn}
                     onPress={() => router.back()}
                 >
-                    <MaterialIcons name="arrow-back-ios-new" size={24} color="#007AFF" />
+                    <MaterialIcons name="close" size={24} color="#007AFF" />
                 </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: isDark ? '#FFF' : '#000' }]}>Detail Tugas</Text>
-                <TouchableOpacity style={styles.headerBtn}>
+                <Text style={[styles.headerTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('taskDetail')}</Text>
+                <TouchableOpacity style={styles.headerBtn} onPress={() => setShowMenu(true)}>
                     <MaterialIcons name="more-horiz" size={24} color="#007AFF" />
                 </TouchableOpacity>
             </View>
@@ -71,11 +86,30 @@ export default function TaskDetailScreen() {
                             <Text style={[styles.taskTitle, { color: isDark ? '#FFF' : '#111827', textDecorationLine: task.isCompleted ? 'line-through' : 'none' }]}>
                                 {task.title}
                             </Text>
-                            {task.tag && (
-                                <View style={[styles.projectBadge, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]}>
-                                    <Text style={[styles.projectText, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>{task.tag}</Text>
-                                </View>
-                            )}
+                            {(task.category || task.tag) && (() => {
+                                const category = task.category ? getCategoryDisplay(task.category) : null;
+                                if (category) {
+                                    // Convert hex to rgba for background
+                                    const hexToRgba = (hex: string, alpha: number) => {
+                                        const r = parseInt(hex.slice(1, 3), 16);
+                                        const g = parseInt(hex.slice(3, 5), 16);
+                                        const b = parseInt(hex.slice(5, 7), 16);
+                                        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                                    };
+                                    return (
+                                        <View style={[styles.projectBadge, { backgroundColor: hexToRgba(category.color, isDark ? 0.2 : 0.15) }]}>
+                                            <Text style={[styles.projectText, { color: category.color }]}>{category.name}</Text>
+                                        </View>
+                                    );
+                                } else if (task.tag) {
+                                    return (
+                                        <View style={[styles.projectBadge, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]}>
+                                            <Text style={[styles.projectText, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>{task.tag}</Text>
+                                        </View>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </View>
                         <TouchableOpacity>
                             <MaterialIcons name={task.priority === 'high' ? "star" : "star-border"} size={28} color="#FACC15" />
@@ -91,10 +125,10 @@ export default function TaskDetailScreen() {
                             <View style={[styles.iconBox, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2' }]}>
                                 <MaterialIcons name="calendar-today" size={20} color={isDark ? '#F87171' : '#DC2626'} />
                             </View>
-                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>Jatuh Tempo</Text>
+                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>{t('dueDate')}</Text>
                         </View>
                         <View style={styles.menuRight}>
-                            <Text style={[styles.menuValue, { color: isDark ? '#F87171' : '#EF4444' }]}>{task.date || 'Hari ini'}, {task.time || '17:00'}</Text>
+                            <Text style={[styles.menuValue, { color: isDark ? '#F87171' : '#EF4444' }]}>{task.date || t('today')}, {task.time || '17:00'}</Text>
                             <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
                         </View>
                     </View>
@@ -105,10 +139,10 @@ export default function TaskDetailScreen() {
                             <View style={[styles.iconBox, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE' }]}>
                                 <MaterialIcons name="notifications" size={20} color={isDark ? '#60A5FA' : '#2563EB'} />
                             </View>
-                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>Pengingat</Text>
+                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>{t('reminder')}</Text>
                         </View>
                         <View style={styles.menuRight}>
-                            <Text style={[styles.menuValue, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>1 jam sebelumnya</Text>
+                            <Text style={[styles.menuValue, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>1 {t('hourBefore')}</Text>
                             <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
                         </View>
                     </View>
@@ -119,11 +153,11 @@ export default function TaskDetailScreen() {
                             <View style={[styles.iconBox, { backgroundColor: isDark ? 'rgba(249, 115, 22, 0.2)' : '#FFEDD5' }]}>
                                 <MaterialIcons name="flag" size={20} color={isDark ? '#FB923C' : '#EA580C'} />
                             </View>
-                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>Prioritas</Text>
+                            <Text style={[styles.menuLabel, { color: isDark ? '#FFF' : '#111827' }]}>{t('priority')}</Text>
                         </View>
                         <View style={styles.menuRight}>
                             <View style={[styles.priorityBadge, { backgroundColor: isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFEDD5' }]}>
-                                <Text style={[styles.priorityText, { color: isDark ? '#FDBA74' : '#C2410C' }]}>{task.priority === 'high' ? 'Tinggi' : task.priority === 'medium' ? 'Sedang' : 'Rendah'}</Text>
+                                <Text style={[styles.priorityText, { color: isDark ? '#FDBA74' : '#C2410C' }]}>{task.priority === 'high' ? t('high') : task.priority === 'medium' ? t('medium') : t('low')}</Text>
                             </View>
                             <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4B5563' : '#D1D5DB'} />
                         </View>
@@ -134,11 +168,11 @@ export default function TaskDetailScreen() {
                 <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
                     <View style={styles.sectionHeader}>
                         <MaterialIcons name="description" size={20} color="#9CA3AF" />
-                        <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#111827' }]}>Deskripsi</Text>
+                        <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#111827' }]}>{t('description')}</Text>
                     </View>
                     <View style={styles.descContent}>
                         <Text style={[styles.descText, { color: isDark ? '#D1D5DB' : '#4B5563' }]}>
-                            {task.description || 'Tidak ada deskripsi.'}
+                            {task.description || t('noDescription')}
                         </Text>
                     </View>
                 </View>
@@ -149,10 +183,10 @@ export default function TaskDetailScreen() {
                         <View style={[styles.sectionHeader, { justifyContent: 'space-between', marginBottom: 16 }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <MaterialIcons name="group" size={20} color="#9CA3AF" />
-                                <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#111827' }]}>Dibagikan dengan</Text>
+                                <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#111827' }]}>{t('sharedWith')}</Text>
                             </View>
                             <TouchableOpacity style={[styles.manageBtn, { backgroundColor: 'rgba(0, 122, 255, 0.1)' }]}>
-                                <Text style={styles.manageText}>Kelola</Text>
+                                <Text style={styles.manageText}>{t('manage')}</Text>
                             </TouchableOpacity>
                         </View>
 
@@ -178,24 +212,102 @@ export default function TaskDetailScreen() {
             </ScrollView>
 
             {/* Bottom Action Bar */}
-            <View style={[styles.bottomBar, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+            <ActionBar>
                 <View style={styles.actionButtons}>
                     <TouchableOpacity
                         style={[styles.actionBtn, { backgroundColor: isDark ? '#374151' : '#FFFFFF', borderColor: isDark ? '#4B5563' : '#F3F4F6' }]}
-                        onPress={() => router.push('/task/share')}
+                        onPress={() => router.push({ pathname: '/task/share', params: { id: task.id } })}
                     >
                         <MaterialIcons name="share" size={22} color="#007AFF" />
-                        <Text style={[styles.actionBtnText, { color: isDark ? '#FFF' : '#111827' }]}>Bagikan</Text>
+                        <Text style={[styles.actionBtnText, { color: isDark ? '#FFF' : '#111827' }]}>{t('shareTask')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.actionBtn, { backgroundColor: '#007AFF', flex: 1 }]}
                         onPress={() => router.push({ pathname: '/modal', params: { id } })}
                     >
                         <MaterialIcons name="edit" size={22} color="#FFFFFF" />
-                        <Text style={[styles.actionBtnText, { color: '#FFFFFF' }]}>Edit Tugas</Text>
+                        <Text style={[styles.actionBtnText, { color: '#FFFFFF' }]}>{t('editTaskBtn')}</Text>
                     </TouchableOpacity>
                 </View>
-            </View>
+            </ActionBar>
+
+            {/* Dropdown Menu */}
+            <Modal
+                visible={showMenu}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowMenu(false)}
+            >
+                <TouchableOpacity
+                    style={styles.menuOverlay}
+                    activeOpacity={1}
+                    onPress={() => setShowMenu(false)}
+                >
+                    <View style={[styles.dropdownMenu, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', top: insets.top + 50, right: 16 }]}>
+                        <TouchableOpacity
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                                setShowMenu(false);
+                                router.push({ pathname: '/modal', params: { id } });
+                            }}
+                        >
+                            <MaterialIcons name="edit" size={20} color="#007AFF" />
+                            <Text style={[styles.dropdownText, { color: isDark ? '#FFF' : '#000' }]}>{t('edit')}</Text>
+                        </TouchableOpacity>
+                        <View style={[styles.dropdownDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+                        <TouchableOpacity
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                                setShowMenu(false);
+                                setShowDeleteModal(true);
+                            }}
+                        >
+                            <MaterialIcons name="delete" size={20} color="#EF4444" />
+                            <Text style={[styles.dropdownText, { color: '#EF4444' }]}>{t('delete')}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                visible={showDeleteModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowDeleteModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.confirmModal, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}>
+                        <View style={styles.confirmIconContainer}>
+                            <View style={styles.confirmIcon}>
+                                <MaterialIcons name="delete-outline" size={32} color="#EF4444" />
+                            </View>
+                        </View>
+                        <Text style={[styles.confirmTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('deleteTask')}</Text>
+                        <Text style={[styles.confirmMessage, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+                            Apakah Anda yakin ingin menghapus tugas ini? Tindakan ini tidak dapat dibatalkan.
+                        </Text>
+                        <View style={styles.confirmButtons}>
+                            <TouchableOpacity
+                                style={[styles.confirmBtn, styles.cancelBtn, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]}
+                                onPress={() => setShowDeleteModal(false)}
+                            >
+                                <Text style={[styles.confirmBtnText, { color: isDark ? '#FFF' : '#000' }]}>{t('cancel')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.confirmBtn, styles.deleteBtn]}
+                                onPress={() => {
+                                    setShowDeleteModal(false);
+                                    deleteTask(task.id);
+                                    router.back();
+                                }}
+                            >
+                                <Text style={[styles.confirmBtnText, { color: '#FFF' }]}>{t('delete')}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </ThemedView>
     );
 }
@@ -429,6 +541,93 @@ const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     actionBtnText: {
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    menuOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    dropdownMenu: {
+        position: 'absolute',
+        minWidth: 160,
+        borderRadius: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+        elevation: 8,
+        overflow: 'hidden',
+    },
+    dropdownItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        gap: 12,
+    },
+    dropdownText: {
+        fontSize: 16,
+        fontWeight: '500',
+    },
+    dropdownDivider: {
+        height: 1,
+        marginHorizontal: 16,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    confirmModal: {
+        width: '100%',
+        maxWidth: 320,
+        borderRadius: 20,
+        padding: 24,
+        alignItems: 'center',
+    },
+    confirmIconContainer: {
+        marginBottom: 16,
+    },
+    confirmIcon: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    confirmTitle: {
+        fontSize: 20,
+        fontWeight: '600',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    confirmMessage: {
+        fontSize: 15,
+        textAlign: 'center',
+        lineHeight: 22,
+        marginBottom: 24,
+    },
+    confirmButtons: {
+        flexDirection: 'row',
+        gap: 12,
+        width: '100%',
+    },
+    confirmBtn: {
+        flex: 1,
+        height: 48,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    cancelBtn: {},
+    deleteBtn: {
+        backgroundColor: '#EF4444',
+    },
+    confirmBtnText: {
         fontSize: 16,
         fontWeight: '600',
     },

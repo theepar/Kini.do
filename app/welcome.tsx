@@ -90,12 +90,12 @@ export default function WelcomeScreen() {
 
     const handleStart = async () => {
         await AsyncStorage.setItem('hasSeenWelcome', 'true');
-        router.replace('/(tabs)');
+        router.replace('/login');
     };
 
     const handleLogin = async () => {
         await AsyncStorage.setItem('hasSeenWelcome', 'true');
-        router.replace('/(tabs)');
+        router.replace('/login');
     };
 
     return (

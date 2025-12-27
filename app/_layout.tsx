@@ -23,15 +23,29 @@ const KiniDarkTheme = {
   colors: {
     ...DarkTheme.colors,
     background: '#000000',
-    card: '#1C1C1E',
+    card: '#000000',
     text: '#FFFFFF',
     border: 'rgba(255, 255, 255, 0.1)',
     primary: '#007AFF',
+    notification: '#007AFF',
   },
 };
 
+// Light theme but with dark navigation background to prevent flash
+const KiniLightTheme = {
+  ...DarkTheme,
+  dark: false,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#000000',
+    card: '#000000',
+    text: '#FFFFFF',
+    border: 'rgba(255, 255, 255, 0.1)',
+    primary: '#007AFF',
+    notification: '#007AFF',
+  },
+};
 
-// ... (existing imports)
 
 import { ThemeProvider as AppThemeProvider } from '@/context/ThemeContext';
 
@@ -81,58 +95,158 @@ export default function RootLayout() {
   );
 }
 
+import { AuthGate } from '@/components/AuthGate';
+import { AuthProvider } from '@/context/AuthContext';
+import { CalendarSyncProvider } from '@/context/CalendarSyncContext';
+import { LanguageProvider } from '@/context/LanguageContext';
+import { PreferencesProvider } from '@/context/PreferencesContext';
 import { TaskProvider } from '@/context/TaskContext';
+import { supabase } from '@/lib/supabase';
+import { notifications } from '@/services/notifications';
+import * as Linking from 'expo-linking';
+import { router } from 'expo-router';
 
 function RootLayoutNav({ showWelcome }: { showWelcome: boolean }) {
   const colorScheme = useColorScheme();
 
+  // Request notification permission on app launch
+  useEffect(() => {
+    notifications.requestPermissions();
+  }, []);
+
+  // Handle deep links for password reset
+  useEffect(() => {
+    const handleDeepLink = async (url: string) => {
+      if (url.includes('reset-password') || url.includes('type=recovery')) {
+        // Extract tokens from URL
+        const hashIndex = url.indexOf('#');
+        if (hashIndex !== -1) {
+          const fragment = url.substring(hashIndex + 1);
+          const params = new URLSearchParams(fragment);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+          const type = params.get('type');
+
+          if (accessToken && type === 'recovery') {
+            // Set the session for password reset
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || '',
+            });
+            // Navigate to reset password screen
+            router.replace('/reset-password');
+          }
+        }
+      }
+    };
+
+    // Handle initial URL (app opened from link)
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink(url);
+    });
+
+    // Handle URL when app is already open
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleDeepLink(url);
+    });
+
+    return () => subscription.remove();
+  }, []);
+
   return (
-    <TaskProvider>
-      <ThemeProvider value={KiniDarkTheme}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: '#000000' },
-          }}
-          initialRouteName={showWelcome ? 'welcome' : '(tabs)'}
-        >
-          <Stack.Screen
-            name="welcome"
-            options={{
-              headerShown: false,
-              animation: 'fade',
-            }}
-          />
-          <Stack.Screen
-            name="(tabs)"
-            options={{
-              headerShown: false,
-              animation: 'fade',
-            }}
-          />
-          <Stack.Screen
-            name="modal"
-            options={{
-              presentation: 'modal',
-              headerShown: false,
-            }}
-          />
-          <Stack.Screen
-            name="task/[id]"
-            options={{
-              headerShown: false,
-              presentation: 'card',
-            }}
-          />
-          <Stack.Screen
-            name="task/share"
-            options={{
-              headerShown: false,
-              presentation: 'modal',
-            }}
-          />
-        </Stack>
-      </ThemeProvider>
-    </TaskProvider>
+    <AuthProvider>
+      <CalendarSyncProvider>
+        <PreferencesProvider>
+          <LanguageProvider>
+            <TaskProvider>
+              <ThemeProvider value={KiniDarkTheme}>
+                <AuthGate>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: '#000000' },
+                      animation: 'slide_from_bottom',
+                      animationDuration: 280,
+                      gestureEnabled: true,
+                      gestureDirection: 'vertical',
+                      freezeOnBlur: true,
+                    }}
+                    initialRouteName={showWelcome ? 'welcome' : '(tabs)'}
+                  >
+                    <Stack.Screen
+                      name="welcome"
+                      options={{
+                        headerShown: false,
+                        animation: 'fade',
+                        animationDuration: 300,
+                      }}
+                    />
+                    <Stack.Screen
+                      name="(tabs)"
+                      options={{
+                        headerShown: false,
+                        animation: 'none',
+                      }}
+                    />
+                    <Stack.Screen
+                      name="modal"
+                      options={{
+                        presentation: 'containedTransparentModal',
+                        headerShown: false,
+                        animation: 'slide_from_bottom',
+                        animationDuration: 280,
+                        contentStyle: { backgroundColor: 'transparent' },
+                        gestureEnabled: true,
+                        gestureDirection: 'vertical',
+                      }}
+                    />
+                    <Stack.Screen
+                      name="task/[id]"
+                      options={{
+                        headerShown: false,
+                        animation: 'slide_from_bottom',
+                        animationDuration: 280,
+                        contentStyle: { backgroundColor: '#000000' },
+                        gestureEnabled: true,
+                        gestureDirection: 'vertical',
+                      }}
+                    />
+                    <Stack.Screen
+                      name="task/share"
+                      options={{
+                        headerShown: false,
+                        animation: 'slide_from_bottom',
+                        animationDuration: 280,
+                        contentStyle: { backgroundColor: '#000000' },
+                        gestureEnabled: true,
+                        gestureDirection: 'vertical',
+                      }}
+                    />
+                    <Stack.Screen
+                      name="login"
+                      options={{
+                        headerShown: false,
+                        animation: 'fade',
+                        animationDuration: 300,
+                        contentStyle: { backgroundColor: '#000000' },
+                      }}
+                    />
+                    <Stack.Screen
+                      name="reset-password"
+                      options={{
+                        headerShown: false,
+                        animation: 'fade',
+                        animationDuration: 300,
+                        contentStyle: { backgroundColor: '#000000' },
+                      }}
+                    />
+                  </Stack>
+                </AuthGate>
+              </ThemeProvider>
+            </TaskProvider>
+          </LanguageProvider>
+        </PreferencesProvider>
+      </CalendarSyncProvider>
+    </AuthProvider>
   );
 }

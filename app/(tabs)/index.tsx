@@ -15,6 +15,9 @@ import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors'; // Fix: Import Colors
 import { useColorScheme } from '@/hooks/useColorScheme';
 
+import { useAuth } from '@/context/AuthContext';
+import { useCalendarSync } from '@/context/CalendarSyncContext';
+import { useLanguage } from '@/context/LanguageContext';
 import { useTasks } from '@/context/TaskContext';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,12 +27,37 @@ export default function MainScreen() {
   const colorScheme = useColorScheme() ?? 'dark';
   const isDark = colorScheme === 'dark';
   const colors = Colors[colorScheme];
-  const [activeTab, setActiveTab] = useState('Hari Ini');
-  const { tasks } = useTasks();
+  const [activeTab, setActiveTab] = useState('today');
+  const { tasks, getCategoryById } = useTasks();
+  const { t } = useLanguage();
+  const { user } = useAuth();
+  const { autoSyncEnabled, lastSyncTime, isSyncing } = useCalendarSync();
+
+  // Format last sync time
+  const formatLastSync = () => {
+    if (!lastSyncTime) return '';
+    return lastSyncTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
+  // Get category display name
+  const getCategoryDisplay = (categoryId?: string) => {
+    if (!categoryId) return null;
+    const category = getCategoryById(categoryId);
+    if (!category) return null;
+    // Default categories use translation keys
+    const displayName = category.isDefault ? t(category.name as any) : category.name;
+    return { name: displayName, color: category.color };
+  };
 
   // Filter tasks
   const highPriorityTasks = tasks.filter(t => t.priority === 'high' && !t.isCompleted);
   const otherTasks = tasks.filter(t => t.priority !== 'high' && !t.isCompleted);
+
+  const tabs = [
+    { key: 'today', label: t('today') },
+    { key: 'upcoming', label: t('upcoming') },
+    { key: 'completed', label: t('completedFilter') },
+  ];
 
 
   const renderTag = (text?: string, color?: string) => {
@@ -56,6 +84,28 @@ export default function MainScreen() {
     );
   };
 
+  // Render category badge with hex color
+  const renderCategory = (categoryId?: string) => {
+    const category = getCategoryDisplay(categoryId);
+    if (!category) return null;
+
+    // Convert hex to rgba for background
+    const hexToRgba = (hex: string, alpha: number) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    const bg = hexToRgba(category.color, isDark ? 0.2 : 0.15);
+
+    return (
+      <View style={[styles.tag, { backgroundColor: bg }]}>
+        <Text style={[styles.tagText, { color: category.color }]}>{category.name}</Text>
+      </View>
+    );
+  };
+
   return (
     <ThemedView style={styles.container} darkColor={isDark ? '#000000' : colors.background}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -75,7 +125,7 @@ export default function MainScreen() {
         <View style={styles.headerTop}>
           <View>
             <Text style={[styles.headerLabel, { color: isDark ? '#6B7280' : '#9CA3AF' }]}>
-              DAFTAR TUGAS
+              {t('taskList')}
             </Text>
             <View style={styles.titleRow}>
               <Text style={[styles.headerTitle, { color: isDark ? '#FFF' : '#000' }]}>
@@ -87,20 +137,28 @@ export default function MainScreen() {
           <TouchableOpacity style={styles.profileButton}>
             <Image
               source={{
-                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCmkjbKILHSxEwmGcKPkVl47efNmNFN9u48f1FQGpkgkxtO5KHM-HJmB--djV0NhfctB22EVBljJJZAFXEHNKEXg9Wiqq3WT4vXQYXFFZv97k5yyYq8I0MDO9oWaw6pr0qHSQ4nTTJ-8H7uEdkVeZ3WEtGryaFxi7Ju_HcLX78R5YG1p1yjEYbK8gOI_Abwn6qbaws_GxOCzUVAZaJckirBTBySGI1wkvdi-b7wB07Bp-lkkPfEp4BSl6cmK1fjZMJcYjvAEPp1g6w',
+                uri: user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.user_metadata?.display_name || user?.email || 'User')}&background=007AFF&color=fff`,
               }}
               style={styles.profileImage}
             />
-            <View style={[styles.onlineIndicator, { borderColor: isDark ? '#1C1C1E' : '#FFF' }]} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.headerMetadata}>
-          <View style={[styles.syncBadge, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-            <MaterialIcons name="cloud-done" size={16} color="#22C55E" />
-            <Text style={[styles.syncText, { color: isDark ? '#D1D5DB' : '#4B5563' }]}>Google Sync Aktif</Text>
-          </View>
-          <Text style={[styles.lastUpdated, { color: isDark ? '#9CA3AF' : '#9CA3AF' }]}>Terakhir: 10:42</Text>
+          {autoSyncEnabled ? (
+            <View style={[styles.syncBadge, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+              <MaterialIcons name={isSyncing ? "sync" : "cloud-done"} size={16} color="#22C55E" />
+              <Text style={[styles.syncText, { color: isDark ? '#D1D5DB' : '#4B5563' }]}>{t('googleSyncActive')}</Text>
+            </View>
+          ) : (
+            <View style={[styles.syncBadge, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+              <MaterialIcons name="cloud-off" size={16} color="#9CA3AF" />
+              <Text style={[styles.syncText, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>Sync Off</Text>
+            </View>
+          )}
+          {autoSyncEnabled && lastSyncTime && (
+            <Text style={[styles.lastUpdated, { color: isDark ? '#9CA3AF' : '#9CA3AF' }]}>{t('lastUpdated')}: {formatLastSync()}</Text>
+          )}
         </View>
 
         <ScrollView
@@ -109,8 +167,8 @@ export default function MainScreen() {
           contentContainerStyle={styles.tabsContainer}
           style={styles.tabsScroll}
         >
-          {['Hari Ini', 'Mendatang', 'Selesai'].map((tab) => {
-            const isActive = activeTab === tab;
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.key;
             // Light mode: Active is Black bg, White text.
             // Dark mode: Active is White bg, Black text.
             const activeBg = isDark ? '#FFFFFF' : '#000000';
@@ -120,7 +178,7 @@ export default function MainScreen() {
 
             return (
               <TouchableOpacity
-                key={tab}
+                key={tab.key}
                 style={[
                   styles.tab,
                   {
@@ -129,7 +187,7 @@ export default function MainScreen() {
                     borderWidth: 1,
                   }
                 ]}
-                onPress={() => setActiveTab(tab)}
+                onPress={() => setActiveTab(tab.key)}
               >
                 <Text
                   style={[
@@ -137,9 +195,9 @@ export default function MainScreen() {
                     { color: isActive ? activeText : inactiveText }
                   ]}
                 >
-                  {tab}
+                  {tab.label}
                 </Text>
-                {tab === 'Hari Ini' && isActive && (
+                {tab.key === 'today' && isActive && (
                   <View style={[styles.tabBadge, { backgroundColor: isDark ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.2)' }]}>
                     <Text style={[styles.tabBadgeText, { color: isActive ? activeText : inactiveText }]}>4</Text>
                   </View>
@@ -156,7 +214,7 @@ export default function MainScreen() {
       >
         {/* High Priority Section */}
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#000' }]}>Prioritas Utama</Text>
+          <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('highPriority')}</Text>
           <TouchableOpacity style={[styles.moreBtn, { backgroundColor: isDark ? '#1C1C1E' : '#F3F4F6' }]}>
             <MaterialIcons name="more-horiz" size={20} color="#9CA3AF" />
           </TouchableOpacity>
@@ -193,7 +251,7 @@ export default function MainScreen() {
                   >
                     {task.title}
                   </Text>
-                  {renderTag(task.tag, task.tagColor)}
+                  {task.category ? renderCategory(task.category) : renderTag(task.tag, task.tagColor)}
                 </View>
                 <Text
                   style={[
@@ -256,7 +314,7 @@ export default function MainScreen() {
 
         {/* Nanti Section */}
         <View style={[styles.sectionHeader, { marginTop: 32 }]}>
-          <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#000' }]}>Nanti</Text>
+          <Text style={[styles.sectionTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('later')}</Text>
         </View>
 
         <View style={styles.cardList}>
@@ -296,45 +354,67 @@ export default function MainScreen() {
                   >
                     {task.time}
                   </Text>
-                  <View
-                    style={[
-                      styles.metaDot,
-                      { backgroundColor: isDark ? '#4B5563' : '#D1D5DB' },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.miniTag,
-                      {
-                        backgroundColor:
-                          task.tagColor === 'green'
-                            ? isDark
-                              ? 'rgba(34, 197, 94, 0.1)'
-                              : '#DCFCE7'
-                            : isDark
-                              ? 'rgba(234, 179, 8, 0.1)'
-                              : '#FEF9C3',
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.miniTagText,
-                        {
-                          color:
-                            task.tagColor === 'green'
-                              ? isDark
-                                ? '#4ADE80'
-                                : '#16A34A'
-                              : isDark
-                                ? '#FACC15'
-                                : '#CA8A04',
-                        },
-                      ]}
-                    >
-                      {task.tag}
-                    </Text>
-                  </View>
+                  {(task.category || task.tag) && (
+                    <>
+                      <View
+                        style={[
+                          styles.metaDot,
+                          { backgroundColor: isDark ? '#4B5563' : '#D1D5DB' },
+                        ]}
+                      />
+                      {task.category ? (
+                        (() => {
+                          const cat = getCategoryDisplay(task.category);
+                          if (!cat) return null;
+                          const hexToRgba = (hex: string, alpha: number) => {
+                            const r = parseInt(hex.slice(1, 3), 16);
+                            const g = parseInt(hex.slice(3, 5), 16);
+                            const b = parseInt(hex.slice(5, 7), 16);
+                            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                          };
+                          return (
+                            <View style={[styles.miniTag, { backgroundColor: hexToRgba(cat.color, isDark ? 0.1 : 0.15) }]}>
+                              <Text style={[styles.miniTagText, { color: cat.color }]}>{cat.name}</Text>
+                            </View>
+                          );
+                        })()
+                      ) : (
+                        <View
+                          style={[
+                            styles.miniTag,
+                            {
+                              backgroundColor:
+                                task.tagColor === 'green'
+                                  ? isDark
+                                    ? 'rgba(34, 197, 94, 0.1)'
+                                    : '#DCFCE7'
+                                  : isDark
+                                    ? 'rgba(234, 179, 8, 0.1)'
+                                    : '#FEF9C3',
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.miniTagText,
+                              {
+                                color:
+                                  task.tagColor === 'green'
+                                    ? isDark
+                                      ? '#4ADE80'
+                                      : '#16A34A'
+                                    : isDark
+                                      ? '#FACC15'
+                                      : '#CA8A04',
+                              },
+                            ]}
+                          >
+                            {task.tag}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  )}
                 </View>
               </View>
               {task.flagged && (

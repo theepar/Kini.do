@@ -15,14 +15,26 @@ export const googleCalendar = {
      * Create a calendar event from a task
      */
     async createEvent(accessToken: string, task: Task): Promise<CalendarEvent | null> {
-        if (!task.dueDate) return null;
+        // Support both dueDate and date+time formats
+        let startTime: Date;
 
-        const startTime = new Date(task.dueDate);
+        if (task.dueDate) {
+            startTime = new Date(task.dueDate);
+        } else if (task.date) {
+            startTime = new Date(task.date);
+            if (task.time) {
+                const [hours, minutes] = task.time.split(':').map(Number);
+                startTime.setHours(hours, minutes, 0, 0);
+            }
+        } else {
+            return null;
+        }
+
         const endTime = new Date(startTime.getTime() + 30 * 60 * 1000); // 30 min duration
 
         const event = {
             summary: task.title,
-            description: task.description || `Task dari Kini.do - Prioritas: ${task.priority}`,
+            description: task.description || `Task dari Kini.do - Prioritas: ${task.priority || 'normal'}`,
             start: {
                 dateTime: startTime.toISOString(),
                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -71,14 +83,26 @@ export const googleCalendar = {
         eventId: string,
         task: Task
     ): Promise<CalendarEvent | null> {
-        if (!task.dueDate) return null;
+        // Support both dueDate and date+time formats
+        let startTime: Date;
 
-        const startTime = new Date(task.dueDate);
+        if (task.dueDate) {
+            startTime = new Date(task.dueDate);
+        } else if (task.date) {
+            startTime = new Date(task.date);
+            if (task.time) {
+                const [hours, minutes] = task.time.split(':').map(Number);
+                startTime.setHours(hours, minutes, 0, 0);
+            }
+        } else {
+            return null;
+        }
+
         const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
 
         const event = {
             summary: task.title,
-            description: task.description || `Task dari Kini.do - Prioritas: ${task.priority}`,
+            description: task.description || `Task dari Kini.do - Prioritas: ${task.priority || 'normal'}`,
             start: {
                 dateTime: startTime.toISOString(),
                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,

@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/Colors';
+import { useLanguage } from '@/context/LanguageContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
@@ -8,6 +9,7 @@ export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'dark';
   const isDark = colorScheme === 'dark';
   const colors = Colors[colorScheme];
+  const { t } = useLanguage();
 
   return (
     <Tabs
@@ -19,20 +21,15 @@ export default function TabLayout() {
           backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
           borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
           borderTopWidth: 1,
-          borderTopRightRadius: 24,
-          borderTopLeftRadius: 24,
+          borderTopRightRadius: 20,
+          borderTopLeftRadius: 20,
           position: 'absolute',
-          bottom: 0,
+          bottom: -1,
           left: 0,
           right: 0,
-          height: 85,
+          height: 70,
           paddingTop: 8,
-          paddingBottom: 28,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.05,
-          shadowRadius: 10,
-          elevation: 5,
+          paddingBottom: 12,
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -45,7 +42,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tugas',
+          title: t('home'),
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="check-circle-outline" size={26} color={color} />
           ),
@@ -56,7 +53,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="calendar"
         options={{
-          title: 'Kalender',
+          title: t('calendar'),
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="calendar-today" size={24} color={color} />
           ),
@@ -67,7 +64,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          title: 'Cari',
+          title: t('search'),
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="search" size={28} color={color} />
           ),
@@ -78,7 +75,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Pengaturan',
+          title: t('settings'),
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="settings" size={26} color={color} />
           ),

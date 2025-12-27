@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useState } from 'react';
 import {
     Image,
     ScrollView,
@@ -12,46 +12,73 @@ import {
     View,
 } from 'react-native';
 
+import { ActionBar } from '@/components/ActionBar';
 import { ThemedView } from '@/components/ThemedView';
+import { Colors } from '@/constants/Colors';
+import { useLanguage } from '@/context/LanguageContext';
+import { useTasks } from '@/context/TaskContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ShareScreen() {
     const insets = useSafeAreaInsets();
+    const { id } = useLocalSearchParams();
     const colorScheme = useColorScheme() ?? 'dark';
     const isDark = colorScheme === 'dark';
+    const colors = Colors[colorScheme];
+    const { t } = useLanguage();
+    const { tasks, getCategoryById } = useTasks();
+
+    // Find task from id
+    const task = tasks.find(t => t.id === id);
+
+    // Get category display
+    const getCategoryDisplay = (categoryId?: string) => {
+        if (!categoryId) return null;
+        const category = getCategoryById(categoryId);
+        if (!category) return null;
+        const displayName = category.isDefault ? t(category.name as any) : category.name;
+        return { name: displayName, color: category.color };
+    };
+
+    const category = task?.category ? getCategoryDisplay(task.category) : null;
+    const taskTitle = task?.title || t('task');
+    const taskTag = category?.name || task?.tag || t('task');
+
+    // Selected contacts state
+    const [selectedContacts, setSelectedContacts] = useState<string[]>(['sarah']);
 
     return (
-        <ThemedView style={styles.container} darkColor="#000000">
+        <ThemedView style={styles.container} darkColor={colors.background}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
             {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)' }]}>
-                <TouchableOpacity onPress={() => router.back()}>
-                    <Text style={styles.headerBtnText}>Batal</Text>
+            <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: colors.border, backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)' }]}>
+                <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+                    <MaterialIcons name="close" size={24} color={colors.primary} />
                 </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: isDark ? '#FFF' : '#000' }]}>Bagikan Tugas</Text>
-                <TouchableOpacity onPress={() => console.log('Kirim')}>
-                    <Text style={[styles.headerBtnText, styles.headerBtnBold]}>Kirim</Text>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>{t('shareTask')}</Text>
+                <TouchableOpacity style={styles.headerBtn} onPress={() => console.log('Kirim')}>
+                    <MaterialIcons name="send" size={24} color={colors.primary} />
                 </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
                 {/* Shared Item */}
                 <View style={styles.section}>
-                    <Text style={[styles.sectionTitle, { color: '#8E8E93' }]}>ITEM YANG DIBAGIKAN</Text>
-                    <View style={[styles.card, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
-                        <View style={[styles.sharedItemHeader, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}>
-                            <View style={styles.sharedIcon}>
+                    <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{t('sharedItem')}</Text>
+                    <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
+                        <View style={[styles.sharedItemHeader, { borderBottomColor: colors.border }]}>
+                            <View style={[styles.sharedIcon, { backgroundColor: category?.color || colors.primary }]}>
                                 <MaterialIcons name="assignment" size={26} color="#FFF" />
                             </View>
                             <View style={styles.sharedInfo}>
-                                <Text style={[styles.sharedTitle, { color: isDark ? '#FFF' : '#000' }]}>Laporan Keuangan Q3</Text>
-                                <Text style={styles.sharedSubtitle}>Daftar Tugas • 5 Item</Text>
+                                <Text style={[styles.sharedTitle, { color: colors.text }]} numberOfLines={2}>{taskTitle}</Text>
+                                <Text style={[styles.sharedSubtitle, { color: colors.textSecondary }]}>{taskTag}</Text>
                             </View>
-                            <TouchableOpacity style={[styles.editBtn, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]}>
-                                <Text style={[styles.editBtnText, { color: isDark ? '#FFF' : '#000' }]}>Ubah</Text>
+                            <TouchableOpacity style={[styles.editBtn, { backgroundColor: isDark ? colors.surface : colors.surfaceSecondary }]}>
+                                <Text style={[styles.editBtnText, { color: colors.text }]}>{t('change')}</Text>
                             </TouchableOpacity>
                         </View>
                         <TouchableOpacity style={styles.accessRow}>
@@ -59,11 +86,11 @@ export default function ShareScreen() {
                                 <View style={[styles.accessIcon, { backgroundColor: isDark ? 'rgba(249, 115, 22, 0.2)' : '#FFEDD5' }]}>
                                     <MaterialIcons name="lock-open" size={18} color={isDark ? '#FB923C' : '#C2410C'} />
                                 </View>
-                                <Text style={[styles.accessLabel, { color: isDark ? '#FFF' : '#000' }]}>Akses Pengguna</Text>
+                                <Text style={[styles.accessLabel, { color: colors.text }]}>{t('userAccess')}</Text>
                             </View>
                             <View style={styles.accessRight}>
-                                <Text style={styles.accessValue}>Bisa Mengedit</Text>
-                                <MaterialIcons name="chevron-right" size={20} color="#8E8E93" />
+                                <Text style={[styles.accessValue, { color: colors.textSecondary }]}>{t('canEdit')}</Text>
+                                <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
                             </View>
                         </TouchableOpacity>
                     </View>
@@ -161,12 +188,12 @@ export default function ShareScreen() {
             </ScrollView>
 
             {/* Bottom Bar */}
-            <View style={[styles.bottomBar, { backgroundColor: isDark ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+            <ActionBar>
                 <TouchableOpacity style={styles.sendBtn}>
                     <Text style={styles.sendBtnText}>Bagikan ke 1 Kontak</Text>
                     <MaterialIcons name="send" size={20} color="#FFF" />
                 </TouchableOpacity>
-            </View>
+            </ActionBar>
         </ThemedView>
     );
 }
@@ -183,12 +210,13 @@ const styles = StyleSheet.create({
         paddingBottom: 16,
         borderBottomWidth: 1,
     },
-    headerBtnText: {
-        fontSize: 17,
-        color: '#007AFF',
-    },
-    headerBtnBold: {
-        fontWeight: '600',
+    headerBtn: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
+        backgroundColor: 'transparent',
     },
     headerTitle: {
         fontSize: 17,
@@ -391,13 +419,15 @@ const styles = StyleSheet.create({
     },
     bottomBar: {
         position: 'absolute',
-        bottom: 0,
+        bottom: -1,
         left: 0,
         right: 0,
-        paddingHorizontal: 16,
+        paddingHorizontal: 24,
         paddingTop: 16,
         paddingBottom: 32,
         borderTopWidth: 1,
+        borderTopRightRadius: 24,
+        borderTopLeftRadius: 24,
     },
     sendBtn: {
         backgroundColor: '#007AFF',

@@ -16,6 +16,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useLanguage } from '@/context/LanguageContext';
 import { useTasks } from '@/context/TaskContext';
 
 export default function SearchScreen() {
@@ -23,17 +24,26 @@ export default function SearchScreen() {
     const colorScheme = useColorScheme() ?? 'dark';
     const isDark = colorScheme === 'dark';
     const colors = Colors[colorScheme];
-    const [activeFilter, setActiveFilter] = useState('Semua');
+    const [activeFilter, setActiveFilter] = useState('all');
     const [searchText, setSearchText] = useState('');
     const { tasks, toggleTask } = useTasks();
+    const { t } = useLanguage();
 
     const filters = [
-        { label: 'Semua', icon: null, color: null },
-        { label: 'Hari Ini', icon: 'wb-sunny', color: '#EAB308' },
-        { label: 'Terlambat', icon: 'warning', color: '#EF4444' },
-        { label: 'Dibagikan', icon: 'group', color: '#A855F7' },
-        { label: 'Selesai', icon: 'check-circle', color: '#22C55E' },
+        { key: 'all', icon: null, color: null },
+        { key: 'today', icon: 'wb-sunny', color: '#EAB308' },
+        { key: 'overdue', icon: 'warning', color: '#EF4444' },
+        { key: 'shared', icon: 'group', color: '#A855F7' },
+        { key: 'completed', icon: 'check-circle', color: '#22C55E' },
     ];
+
+    const filterLabels: { [key: string]: string } = {
+        all: t('all'),
+        today: t('today'),
+        overdue: t('overdue'),
+        shared: t('shared'),
+        completed: t('completedFilter'),
+    };
 
     const filteredTasks = tasks.filter(task => {
         if (!searchText) return false;
@@ -46,8 +56,8 @@ export default function SearchScreen() {
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
             {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-                <Text style={[styles.pageTitle, { color: colors.text }]}>Pencarian</Text>
+            <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(246, 247, 248, 0.95)', borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <Text style={[styles.pageTitle, { color: colors.text }]}>{t('search')}</Text>
             </View>
 
             <View style={[styles.searchBarContainer, { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(246, 247, 248, 0.95)' }]}>
@@ -55,7 +65,7 @@ export default function SearchScreen() {
                     <MaterialIcons name="search" size={24} color="#94a3b8" style={styles.searchIcon} />
                     <TextInput
                         style={[styles.searchInput, { backgroundColor: isDark ? colors.cardBackground : '#FFF', color: colors.text, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0' }]}
-                        placeholder="Cari tugas, proyek, pengingat..."
+                        placeholder={t('searchPlaceholder')}
                         placeholderTextColor="#94a3b8"
                         value={searchText}
                         onChangeText={setSearchText}
@@ -80,23 +90,23 @@ export default function SearchScreen() {
                             style={[
                                 styles.filterChip,
                                 {
-                                    backgroundColor: activeFilter === filter.label
+                                    backgroundColor: activeFilter === filter.key
                                         ? colors.tint
                                         : (isDark ? colors.cardBackground : '#FFF'),
                                     borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
-                                    borderWidth: activeFilter === filter.label ? 0 : 1
+                                    borderWidth: activeFilter === filter.key ? 0 : 1
                                 }
                             ]}
-                            onPress={() => setActiveFilter(filter.label)}
+                            onPress={() => setActiveFilter(filter.key)}
                         >
                             {filter.icon && (
-                                <MaterialIcons name={filter.icon as any} size={18} color={activeFilter === filter.label ? '#FFF' : filter.color} style={{ marginRight: 6 }} />
+                                <MaterialIcons name={filter.icon as any} size={18} color={activeFilter === filter.key ? '#FFF' : filter.color} style={{ marginRight: 6 }} />
                             )}
                             <Text style={[
                                 styles.filterText,
-                                { color: activeFilter === filter.label ? '#FFF' : (isDark ? '#E2E8F0' : '#475569') }
+                                { color: activeFilter === filter.key ? '#FFF' : (isDark ? '#E2E8F0' : '#475569') }
                             ]}>
-                                {filter.label}
+                                {filterLabels[filter.key]}
                             </Text>
                         </TouchableOpacity>
                     ))}
@@ -106,10 +116,10 @@ export default function SearchScreen() {
                 {/* Only show if searching */}
                 {searchText.length > 0 ? (
                     <View style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>Hasil Pencarian</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>{t('searchResults')}</Text>
                         <View style={styles.resultList}>
                             {filteredTasks.length === 0 ? (
-                                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>Tidak ada hasil ditemukan.</Text>
+                                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>{t('noResults')}</Text>
                             ) : (
                                 filteredTasks.map(task => (
                                     <TouchableOpacity key={task.id} style={[styles.resultCard, { backgroundColor: isDark ? colors.cardBackground : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9' }]}>
@@ -141,7 +151,7 @@ export default function SearchScreen() {
                         {/* Recent Searches (Mock UI for now) */}
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
-                                <Text style={[styles.sectionTitle, { color: colors.text }]}>Pencarian Terakhir</Text>
+                                <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('recentSearches')}</Text>
                             </View>
                         </View>
                     </View>
@@ -158,7 +168,8 @@ const styles = StyleSheet.create({
     },
     header: {
         paddingHorizontal: 20,
-        paddingBottom: 8,
+        paddingBottom: 16,
+        borderBottomWidth: 1,
     },
     topBar: {
         flexDirection: 'row',
@@ -185,8 +196,8 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     pageTitle: {
-        fontSize: 32,
-        fontWeight: '800',
+        fontSize: 28,
+        fontWeight: 'bold',
         letterSpacing: -0.5,
     },
     searchBarContainer: {
