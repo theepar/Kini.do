@@ -189,7 +189,7 @@ export default function SettingsScreen() {
               iconColor: isDark ? '#FFF' : '#334155',
               iconBg: isDark ? '#283339' : '#F1F5F9',
               title: t('googleAccount'),
-              subtitle: `${t('connectedAs')} Deva`,
+              subtitle: `${t('connectedAs')} ${user?.user_metadata?.full_name || user?.user_metadata?.display_name || user?.email}`,
               value: t('manage'),
             })}
             <View style={[styles.separator, { backgroundColor: colors.border }]} />
