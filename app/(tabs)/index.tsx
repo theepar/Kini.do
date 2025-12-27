@@ -624,7 +624,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 34,
-    fontWeight: '800',
+    fontWeight: 'bold',
     letterSpacing: -1,
     fontFamily: 'Inter',
   },

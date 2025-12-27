@@ -33,8 +33,9 @@ export default function TabLayout() {
         },
         tabBarLabelStyle: {
           fontSize: 10,
-          fontWeight: '500',
+          fontWeight: 'bold',
           marginTop: 4,
+          fontFamily: 'Inter',
         },
       }}>
 
